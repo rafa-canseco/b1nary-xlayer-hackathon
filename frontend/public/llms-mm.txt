@@ -1,0 +1,729 @@
+# b1nary Market Making Guide
+
+> Everything an AI agent (or human) needs to know to market-make options on b1nary. From zero knowledge of options to submitting your first signed quote.
+
+**Authentication:** API key required for all `/mm/*` endpoints
+
+### Environments
+
+| | Production (Base mainnet) | Testnet (Base Sepolia) |
+|---|---|---|
+| Chain ID | `8453` | `84532` |
+| API | `https://api.b1nary.app` | `https://optionsprotocolbackend-staging.up.railway.app` |
+| RPC | `https://mainnet.base.org` | `https://sepolia.base.org` |
+| BatchSettler | `0xd281ADdB8b5574360Fd6BFC245B811ad5C582a3B` | `0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `0xAB51a471493832C1D70cef8ff937A850cf37c860` (LUSD) |
+| WETH | `0x4200000000000000000000000000000000000006` | `0x8A6Aa2304797898d46eC1d342Fedc817D3a973B6` (LETH) |
+| cbBTC | `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` | `0x39fA11EbBE82699Fd9F79C566D7384064571d2b4` (LBTC) |
+
+Use testnet for development. All code examples below use testnet values — swap addresses and URLs for production when ready.
+
+---
+
+## What Your Agent Must Do
+
+This is the complete job description for a market making agent on b1nary. Everything below this section explains how to do each step.
+
+### One-time setup (do once, then never again)
+
+1. **Get an API key and whitelist.** Send your wallet address to the b1nary team. We whitelist you on-chain and give you an API key.
+2. **Mint LUSD (test USDC).** Call `mint()` on the LUSD contract to fund your wallet. This is the currency you pay premiums in. Mint as much as you need.
+3. **Approve LUSD to BatchSettler.** Call `approve(BatchSettler, max)` on LUSD so the contract can pull premium from your wallet when users fill your quotes. One transaction, unlimited approval.
+
+### Every cycle (run in a loop, e.g., every 60 seconds)
+
+4. **Cancel previous quotes.** `DELETE /mm/quotes` to clear stale quotes from the API.
+5. **Fetch market data.** `GET /mm/market` returns ETH spot price, implied volatility, and the list of available options (oTokens) to quote.
+6. **Read your on-chain makerNonce.** Call `BatchSettler.makerNonce(yourAddress)`. Every quote you sign must include this nonce.
+7. **Price each option.** Use Black-Scholes (or your own model) with the spot and IV from step 5. Bid slightly below theoretical value. The difference is your edge.
+8. **Sign each quote with EIP-712.** Build the Quote struct and sign it with your private key. The signature is verified both by the API and by the contract.
+9. **Submit signed quotes.** `POST /mm/quotes` with your batch of signed quotes. The API validates signatures and nonces.
+
+### On every fill (react immediately via WebSocket)
+
+10. **Listen for fills.** Connect to `WS /mm/stream` to get real-time notifications when a user executes one of your quotes.
+11. **Hedge immediately.** When a fill arrives, compute the delta and open a hedge position on an external venue (e.g., Hyperliquid perpetual futures). For puts: short ETH. For calls: long ETH. Size = `|delta| * amount_in_ETH`.
+12. **Track your position.** Record the fill details, hedge entry price, and current delta for P&L tracking.
+
+### Continuous risk management
+
+13. **Rebalance hedges.** Every cycle, recalculate delta with fresh spot/IV. If delta shifted significantly (>0.02), adjust your hedge size up or down.
+14. **Monitor exposure.** `GET /mm/exposure` shows your total outstanding risk. `GET /mm/positions` shows open positions by option.
+15. **Circuit breaker.** If the market moves sharply, call `incrementMakerNonce()` on BatchSettler to instantly invalidate all your outstanding quotes.
+
+### At expiry (weekly, 08:00 UTC)
+
+16. **Close hedges.** When an option expires, close the corresponding hedge position on your external venue.
+17. **Record settlement P&L.** Settlement is automatic. OTM options expire worthless (you lose the premium you paid). ITM options have intrinsic value. Your net P&L = `-premium + settlement_value + hedge_pnl`.
+18. **Start the next cycle.** New options are created weekly. Your loop from step 4 continues with fresh oTokens.
+
+### P&L tracking
+
+Your agent should track per-position:
+- Premium paid (from fill data: `gross_premium`)
+- Hedge entry price and size
+- Hedge exit price (when closed at expiry or rebalanced)
+- Settlement outcome (OTM = $0, ITM = intrinsic value)
+- Net P&L = `-premium + settlement + hedge_pnl`
+
+And portfolio-level:
+- Total premium paid across all positions
+- Net delta exposure (sum of `delta * amount` across open positions)
+- Cumulative realized P&L from closed positions
+
+---
+
+## What is Market Making?
+
+Market making is the opposite of directional trading. You are not betting ETH goes up or down. You are the house. You provide liquidity by offering prices, and you earn the spread between your price and the theoretical value of the option.
+
+On b1nary, users sell options (cash-secured puts and covered calls). As a market maker, you buy those options. The user locks collateral and earns premium. You pay that premium and receive oTokens (ERC-20 option tokens).
+
+Your profit comes from pricing options slightly below their theoretical value. The difference between the theoretical price and what you actually pay is your edge. Over many trades, this edge compounds.
+
+### How You Make Money
+
+1. **Spread capture.** You price each option using Black-Scholes (or your own model) and bid slightly below the theoretical value. Example: if an option is worth $50 theoretically, you bid $47. The $3 difference is your edge.
+
+2. **Premium decay (theta).** Options lose value as they approach expiry. If you buy an option and hedge your directional risk, the option decays toward zero (if OTM) while your hedge roughly breaks even. The premium you paid becomes profit.
+
+3. **Volume.** Each individual trade has a small edge. Profit comes from doing many trades consistently.
+
+### How You Lose Money
+
+1. **Adverse selection.** If your prices are stale (you quote based on old data while the market moves), informed traders fill your quotes at favorable prices. This is why short deadlines and fast requoting matter.
+
+2. **Hedging slippage.** You hedge on a separate venue (e.g., perpetual futures). If the hedge fills at a worse price than expected, your edge shrinks.
+
+3. **ITM settlement.** When an option expires in-the-money, your oTokens are redeemed for the user's collateral. The intrinsic value at expiry reduces your net P&L.
+
+4. **Gap risk.** ETH moves faster than you can re-hedge. This is rare on short-dated options but real.
+
+### The P&L Equation
+
+For each trade, your net P&L is:
+
+```
+Net P&L = -Premium Paid + Settlement Value + Hedge P&L
+```
+
+- **Premium Paid:** What you pay the user when they sell the option (gross, before protocol fee).
+- **Settlement Value:** At expiry, if OTM this is $0 (option expires worthless, you lose the premium). If ITM, the option has intrinsic value that offsets some or all of the premium.
+- **Hedge P&L:** Profit or loss from your hedge position on an external venue.
+
+**Example: PUT, strike $2,400, premium $47, ETH at $2,500**
+
+You pay $47 premium. You hedge by shorting $1,175 of ETH (delta ~0.47) on Hyperliquid.
+
+Scenario A: ETH stays at $2,500 (OTM)
+- Premium paid: -$47
+- Settlement: $0 (OTM, oTokens worthless for you)
+- Hedge P&L: ~$0 (ETH didn't move much)
+- Net: -$47 + $0 + $0 = -$47? No. The option was worth $50 theoretically, you paid $47, and theta decay means you effectively captured the $3 spread. But the full premium is your cost if you don't model it correctly.
+
+This is why hedging matters. Without hedging, you are directionally exposed. With delta hedging, your P&L becomes about your edge (spread) rather than about whether ETH goes up or down.
+
+Scenario B: ETH drops to $2,350 (ITM)
+- Premium paid: -$47
+- Settlement: +$50 intrinsic (strike - spot = $2,400 - $2,350)
+- Hedge P&L: +$70.50 (short hedge profits as ETH drops)
+- Net: -$47 + $50 + $70.50 = +$73.50
+
+The key insight: you don't care about direction. You care about pricing accurately and hedging consistently.
+
+---
+
+## Hedging
+
+b1nary handles the options side (quotes, settlement, collateral). Hedging is your responsibility. The protocol gives you the data you need; where and how you hedge is up to you.
+
+### What b1nary Gives You
+
+- **Delta** per option: from `GET /mm/market` you get spot price and IV. Compute delta using Black-Scholes.
+- **Real-time fills** via WebSocket (`WS /mm/stream`): the moment a user fills your quote, you know the exact amount and can hedge immediately.
+- **Position summary** via `GET /mm/positions` and `GET /mm/exposure`: your current open risk at a glance.
+
+### How to Hedge (Hyperliquid Example)
+
+Our testnet market maker hedges on Hyperliquid perpetual futures. The logic:
+
+1. **On fill:** User fills your PUT quote for 1 ETH notional at $2,400 strike. Delta is -0.47. You open a SHORT position of 0.47 ETH on Hyperliquid.
+
+2. **Continuous rebalance:** Every cycle (e.g., 60 seconds), recalculate delta with updated spot and IV. If delta moves from -0.47 to -0.52, increase the short by 0.05 ETH. Threshold: rebalance when delta changes by more than 0.02.
+
+3. **On expiry:** Close the hedge. If the option expired OTM, your hedge should have roughly broken even (small profit or loss from the delta adjustments). If ITM, the hedge profited in the same direction as the option's intrinsic value.
+
+**For puts:** delta is negative, so you SHORT the underlying to hedge.
+**For calls:** delta is positive, so you LONG the underlying to hedge.
+
+The hedge size in ETH = `|delta| * number_of_options`
+
+### Alternative Hedge Venues
+
+You can hedge anywhere that offers ETH perpetual futures or spot:
+- Hyperliquid (our reference implementation)
+- Binance, Bybit, OKX, dYdX
+- On-chain perps (GMX, Kwenta)
+- Even spot: buy/sell ETH directly
+
+The only requirement is that your hedge venue is fast enough to react to fills.
+
+### No Hedge (Directional Mode)
+
+If you believe you have an informational edge on ETH direction, you can skip hedging entirely. In this case, you are making a directional bet with the added advantage of earning the spread. This is higher risk but valid for agents with strong price prediction models.
+
+---
+
+## Pricing
+
+b1nary provides market data. You bring your own pricing model.
+
+### Market Data from b1nary
+
+`GET /mm/market` returns:
+
+```json
+{
+  "eth_spot": 2450.50,
+  "eth_iv": 0.65,
+  "protocol_fee_bps": 400,
+  "gas_price_gwei": 0.01,
+  "available_otokens": [
+    {
+      "address": "0x...",
+      "strike_price": 2400.0,
+      "expiry": 1741200000,
+      "is_put": true
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `eth_spot` | Current ETH/USD price from Chainlink |
+| `eth_iv` | Implied volatility from Deribit (annualized, decimal: 0.65 = 65%) |
+| `protocol_fee_bps` | Protocol fee: 400 = 4%. Deducted from gross premium |
+| `available_otokens` | Options available for quoting. Created by the platform each week |
+
+### Black-Scholes Reference
+
+Our MM uses standard Black-Scholes with a configurable spread:
+
+```python
+from math import log, sqrt, exp
+from scipy.stats import norm
+
+def bs_price(is_put, spot, strike, T, r, sigma):
+    """T = time to expiry in years, r = risk-free rate, sigma = IV."""
+    if T <= 0:
+        return max(strike - spot, 0) if is_put else max(spot - strike, 0)
+    d1 = (log(spot / strike) + (r + 0.5 * sigma**2) * T) / (sigma * sqrt(T))
+    d2 = d1 - sigma * sqrt(T)
+    if is_put:
+        return strike * exp(-r * T) * norm.cdf(-d2) - spot * norm.cdf(-d1)
+    return spot * norm.cdf(d1) - strike * exp(-r * T) * norm.cdf(d2)
+
+def bs_delta(is_put, spot, strike, T, r, sigma):
+    """Returns delta: [-1, 0] for puts, [0, 1] for calls."""
+    if T <= 0:
+        return (-1.0 if spot < strike else 0.0) if is_put else (1.0 if spot > strike else 0.0)
+    d1 = (log(spot / strike) + (r + 0.5 * sigma**2) * T) / (sigma * sqrt(T))
+    return norm.cdf(d1) - 1.0 if is_put else norm.cdf(d1)
+
+# Price with spread (the MM bids below theoretical value)
+def bid_price(is_put, spot, strike, T, r, sigma, spread_bps=300):
+    theo = bs_price(is_put, spot, strike, T, r, sigma)
+    return max(theo * (1 - spread_bps / 10000), 1e-6)
+```
+
+You can use any pricing model. Black-Scholes is a starting point. Advanced models account for skew, kurtosis, and realized vs implied vol.
+
+### Spread Selection
+
+The spread (in basis points) is the core parameter that controls your edge vs fill rate:
+- **Wider spread** (e.g., 500 bps = 5%): more edge per trade, fewer fills
+- **Tighter spread** (e.g., 100 bps = 1%): less edge, more fills
+- **Adaptive spread:** widen when volatility is high or uncertain, tighten when confident
+
+---
+
+## Onboarding
+
+b1nary is permissioned for market makers. To start:
+
+1. **Send your wallet address** to the b1nary team
+2. We whitelist your address on the BatchSettler contract
+3. We create an API key mapped to your wallet
+4. You approve USDC spending and start quoting
+
+That's it. No KYC, no lengthy process. We need your wallet address to whitelist you on-chain and map your API key.
+
+---
+
+## Testnet Setup (Base Sepolia)
+
+Everything runs on Base Sepolia testnet. No real money.
+
+### Step 1: Get test tokens
+
+Call the faucet to get gas ETH + test tokens:
+
+```bash
+curl -X POST $API_URL/faucet \
+  -H "Content-Type: application/json" \
+  -d '{"address": "0xYourWalletAddress"}'
+```
+
+This sends 0.005 ETH (gas), 50 LETH (test WETH), and 100,000 LUSD (test USDC). One claim per wallet.
+
+**Need more LUSD for premiums?** The mock USDC contract has a public `mint` function. Call it directly:
+
+```python
+# Mint 100,000 LUSD (test USDC) to your wallet
+LUSD_ADDRESS = "0xAB51a471493832C1D70cef8ff937A850cf37c860"
+LUSD_ABI = [{"inputs": [{"name": "to", "type": "address"}, {"name": "amount", "type": "uint256"}], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function"}]
+
+lusd = w3.eth.contract(address=LUSD_ADDRESS, abi=LUSD_ABI)
+tx = lusd.functions.mint(YOUR_ADDRESS, 100_000 * 10**6).transact({"from": YOUR_ADDRESS})
+```
+
+Or use BaseScan Write Contract: https://sepolia.basescan.org/address/0xAB51a471493832C1D70cef8ff937A850cf37c860#writeContract
+
+### Step 2: Approve USDC to BatchSettler
+
+When users fill your quotes, the contract pulls premium (LUSD) from your wallet. You must approve this once:
+
+```python
+BATCH_SETTLER = "0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918"  # testnet; see Environments for production
+usdc = w3.eth.contract(address=LUSD_ADDRESS, abi=ERC20_ABI)
+usdc.functions.approve(BATCH_SETTLER, 2**256 - 1).transact({"from": YOUR_ADDRESS})
+```
+
+### Step 3: Get whitelisted + API key
+
+Send your wallet address to the b1nary team. We will:
+- Call `setWhitelistedMM(yourAddress, true)` on BatchSettler
+- Create an API key in our system mapped to your wallet
+
+### Testnet Checklist
+
+- [ ] LUSD in wallet (faucet or direct mint)
+- [ ] LUSD approved to BatchSettler
+- [ ] Wallet whitelisted on BatchSettler (b1nary team does this)
+- [ ] API key received (b1nary team provides this)
+- [ ] First quote signed and submitted
+
+---
+
+## Integration: Step by Step
+
+### 1. Read market data
+
+```python
+import requests
+
+# Testnet:
+API = "https://optionsprotocolbackend-staging.up.railway.app"
+# Production: API = "https://api.b1nary.app"
+API_KEY = "your-api-key"
+HEADERS = {"X-API-Key": API_KEY}
+
+market = requests.get(f"{API}/mm/market", headers=HEADERS).json()
+spot = market["eth_spot"]        # e.g., 2450.50
+iv = market["eth_iv"]            # e.g., 0.65
+fee_bps = market["protocol_fee_bps"]  # e.g., 400
+otokens = market["available_otokens"]  # list of options to quote
+```
+
+### 2. Read your on-chain makerNonce
+
+Every quote you sign includes a nonce. It must match the on-chain value.
+
+```python
+from web3 import Web3
+
+w3 = Web3(Web3.HTTPProvider("https://sepolia.base.org"))
+SETTLER_ABI = [{"inputs": [{"name": "", "type": "address"}], "name": "makerNonce", "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view", "type": "function"}]
+settler = w3.eth.contract(address="0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918", abi=SETTLER_ABI)  # testnet
+
+nonce = settler.functions.makerNonce(YOUR_ADDRESS).call()
+```
+
+### 3. Price each option and build quotes
+
+For each oToken in `available_otokens`:
+
+```python
+import time
+
+r = 0.05  # risk-free rate (annualized)
+spread_bps = 300  # your spread: 3%
+
+quotes = []
+for i, ot in enumerate(otokens):
+    T = max((ot["expiry"] - time.time()) / (365 * 86400), 0)
+    if T <= 0:
+        continue  # skip expired options
+
+    price = bid_price(ot["is_put"], spot, ot["strike_price"], T, r, iv, spread_bps)
+    bid_raw = int(price * 1e6)  # USDC has 6 decimals
+    if bid_raw < 1:
+        continue  # skip if price rounds to 0
+
+    quotes.append({
+        "otoken_address": ot["address"],
+        "bid_price": bid_raw,
+        "deadline": int(time.time()) + 300,  # valid for 5 minutes
+        "quote_id": i,
+        "max_amount": 1_00_000_000,  # 1 ETH notional (8 decimals)
+        "maker_nonce": nonce,
+        "strike_price": ot["strike_price"],
+        "expiry": ot["expiry"],
+        "is_put": ot["is_put"],
+    })
+```
+
+### 4. Sign each quote with EIP-712
+
+```python
+from eth_account import Account
+from eth_account.messages import encode_typed_data
+
+PRIVATE_KEY = "0x..."  # your MM wallet private key
+
+DOMAIN = {
+    "name": "b1nary",
+    "version": "1",
+    "chainId": 84532,  # testnet; use 8453 for production
+    "verifyingContract": "0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918",  # testnet BatchSettler; see Environments for production
+}
+
+QUOTE_TYPES = {
+    "Quote": [
+        {"name": "oToken", "type": "address"},
+        {"name": "bidPrice", "type": "uint256"},
+        {"name": "deadline", "type": "uint256"},
+        {"name": "quoteId", "type": "uint256"},
+        {"name": "maxAmount", "type": "uint256"},
+        {"name": "makerNonce", "type": "uint256"},
+    ],
+}
+
+for q in quotes:
+    signable = encode_typed_data(
+        domain_data=DOMAIN,
+        message_types=QUOTE_TYPES,
+        message_data={
+            "oToken": q["otoken_address"],
+            "bidPrice": q["bid_price"],
+            "deadline": q["deadline"],
+            "quoteId": q["quote_id"],
+            "maxAmount": q["max_amount"],
+            "makerNonce": q["maker_nonce"],
+        },
+    )
+    signed = Account.sign_message(signable, private_key=PRIVATE_KEY)
+    q["signature"] = "0x" + signed.signature.hex()
+```
+
+### 5. Submit quotes
+
+```python
+resp = requests.post(
+    f"{API}/mm/quotes",
+    headers=HEADERS,
+    json={"quotes": quotes},
+)
+print(resp.json())
+# {"accepted": 3, "rejected": 0, "errors": []}
+```
+
+### 6. Listen for fills
+
+When a user accepts your quote, you get notified via WebSocket:
+
+```python
+import json
+import asyncio
+import websockets
+
+async def listen_fills():
+    # Testnet: wss://optionsprotocolbackend-staging.up.railway.app/mm/stream
+    # Production: wss://api.b1nary.app/mm/stream
+    url = f"wss://optionsprotocolbackend-staging.up.railway.app/mm/stream?api_key={API_KEY}"
+    async for ws in websockets.connect(url):
+        try:
+            async for msg in ws:
+                data = json.loads(msg)
+                if data["type"] == "fill":
+                    fill = data["data"]
+                    print(f"Fill: {fill['otoken_address']} amount={fill['amount']} premium={fill['gross_premium']}")
+                    # HEDGE HERE: compute delta, open position on your hedge venue
+        except websockets.ConnectionClosed:
+            continue  # auto-reconnect
+
+asyncio.run(listen_fills())
+```
+
+Polling fallback: `GET /mm/fills?since=<timestamp>` if WebSocket is not an option.
+
+### 7. Hedge on fill (Hyperliquid example)
+
+When you receive a fill, compute the delta and hedge:
+
+```python
+from hyperliquid.exchange import Exchange
+from hyperliquid.info import Info
+
+# On each fill:
+amount_eth = int(fill["amount"]) / 1e8  # oToken has 8 decimals
+delta = bs_delta(is_put, spot, strike, T, r, iv)
+hedge_size = abs(delta) * amount_eth
+
+# For puts: short ETH. For calls: long ETH.
+is_buy = not is_put
+exchange.market_open("ETH", is_buy, round(hedge_size, 4), slippage=0.05)
+```
+
+Rebalance periodically as delta changes with spot/time.
+
+### 8. The main loop
+
+A complete MM agent runs this loop:
+
+```python
+while True:
+    # 1. Cancel previous quotes
+    requests.delete(f"{API}/mm/quotes", headers=HEADERS)
+
+    # 2. Fetch fresh market data
+    market = requests.get(f"{API}/mm/market", headers=HEADERS).json()
+
+    # 3. Read current nonce
+    nonce = settler.functions.makerNonce(YOUR_ADDRESS).call()
+
+    # 4. Price all options, sign quotes, submit
+    quotes = build_and_sign_quotes(market, nonce)
+    requests.post(f"{API}/mm/quotes", headers=HEADERS, json={"quotes": quotes})
+
+    # 5. Rebalance hedges based on current positions
+    rebalance_hedges(market["eth_spot"], market["eth_iv"])
+
+    # 6. Sleep and repeat
+    time.sleep(60)
+```
+
+Run the fill listener in a separate thread/task so hedges happen immediately on fill, not on the next cycle.
+
+---
+
+## Settlement: What Happens at Expiry
+
+Options expire weekly at 08:00 UTC. Settlement is automatic. You do not need to do anything.
+
+### OTM (out-of-the-money)
+
+The user's collateral is returned. Your oTokens expire worthless. Your cost was the premium you paid. If you hedged correctly, the hedge roughly broke even, and your net loss is approximately `premium - spread_captured`.
+
+### ITM (in-the-money)
+
+Physical delivery occurs. The operator redeems your oTokens for the user's collateral, swaps it via Uniswap to deliver the contra-asset to the user. Your oTokens are consumed in the process.
+
+| Option | User locked | User receives (ITM) |
+|--------|-------------|---------------------|
+| PUT | USDC | ETH at strike price |
+| CALL | WETH | USDC at strike price |
+
+Your net P&L on an ITM trade: `premium_paid - intrinsic_value + hedge_pnl`. If you hedged delta correctly, the hedge P&L offsets the intrinsic value.
+
+### What you need to do at expiry
+
+Close your hedge position on your external venue. The b1nary side is handled automatically.
+
+---
+
+## Risk Controls
+
+### Circuit Breaker
+
+b1nary runs a circuit breaker that monitors ETH/USD via Chainlink every 10 seconds. If ETH moves more than 2% from a reference price:
+- `GET /prices` returns 503 (users can't see quotes)
+- The protocol's own MM nonce is incremented (quotes invalidated)
+
+You should also implement your own circuit breaker. Call `incrementMakerNonce()` on BatchSettler to instantly invalidate all your outstanding quotes:
+
+```python
+settler.functions.incrementMakerNonce().transact({"from": YOUR_ADDRESS})
+```
+
+### Quote Deadlines
+
+Set short deadlines (e.g., 5 minutes). This limits the time window where a stale quote can be filled against you.
+
+### Max Amount
+
+Set `maxAmount` per quote to limit your exposure per option. Start small (e.g., 1 ETH notional = `100000000` in 8 decimals) and increase as you gain confidence.
+
+### Per-quote Cancellation
+
+Cancel specific quotes without invalidating everything:
+
+```python
+# On-chain: cancel by quote hash
+quote_hash = settler.functions.hashQuote(quote_struct).call()
+settler.functions.cancelQuote(quote_hash).transact({"from": YOUR_ADDRESS})
+
+# Off-chain: cancel all quotes in the API
+requests.delete(f"{API}/mm/quotes", headers=HEADERS)
+```
+
+---
+
+## API Reference
+
+All `/mm/*` endpoints require `X-API-Key` header.
+
+### Quote Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/mm/quotes` | Submit batch of signed quotes (1-100 per request) |
+| GET | `/mm/quotes` | Retrieve your active, non-expired quotes |
+| DELETE | `/mm/quotes` | Cancel all active quotes |
+
+### Monitoring
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/mm/fills` | Filled trades. Params: `since` (timestamp), `otoken` (address), `limit` (1-1000) |
+| GET | `/mm/positions` | Open positions grouped by oToken |
+| GET | `/mm/exposure` | Risk summary: active quotes, notional, positions by expiry |
+| GET | `/mm/market` | Market data: spot, IV, fee, gas, available oTokens |
+| WS | `/mm/stream` | Real-time fill notifications. Auth: `?api_key=...` or first message `{"api_key": "..."}` |
+
+### Public (no auth)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/prices` | Best bid per oToken across all MMs (what users see). 15s cache. 503 if circuit breaker active |
+| GET | `/positions/{address}` | All positions for a wallet |
+| POST | `/faucet` | Testnet tokens + gas (one-time per wallet) |
+
+---
+
+## EIP-712 Quote Struct
+
+Every quote you sign must follow this exact structure. It is verified both by the API (on submission) and by the contract (on execution).
+
+### Domain Separator
+
+```
+name: "b1nary"
+version: "1"
+chainId: 84532 (testnet) or 8453 (production)
+verifyingContract: BatchSettler address for your environment (see Environments table)
+```
+
+### Quote Fields
+
+```
+Quote(
+  address oToken,       // oToken contract address
+  uint256 bidPrice,     // Premium per oToken, USDC raw (6 decimals). 1000000 = 1 USDC
+  uint256 deadline,     // Unix timestamp. Quote invalid after this
+  uint256 quoteId,      // Unique per quote. Same quote_id = upsert (replaces previous)
+  uint256 maxAmount,    // Max oTokens fillable. 8 decimals: 100000000 = 1 ETH notional
+  uint256 makerNonce    // Must match on-chain BatchSettler.makerNonce(yourAddress)
+)
+```
+
+### Typehash
+
+```
+keccak256("Quote(address oToken,uint256 bidPrice,uint256 deadline,uint256 quoteId,uint256 maxAmount,uint256 makerNonce)")
+```
+
+---
+
+## Contract Addresses
+
+See the Environments table at the top for BatchSettler, USDC, WETH, and cbBTC addresses per environment.
+
+### Production (Base mainnet)
+
+| Contract | Address |
+|----------|---------|
+| BatchSettler | `0xd281ADdB8b5574360Fd6BFC245B811ad5C582a3B` |
+| Controller | `0x2Ab6D1c41f0863Bc2324b392f1D8cF073cF42624` |
+| MarginPool | `0xa1e04873F6d112d84824C88c9D6937bE38811657` |
+| Oracle | `0x09daa0194A3AF59b46C5443aF9C20fAd98347671` |
+| Whitelist | `0xC0E6b9F214151cEDbeD3735dF77E9d8EE70ebA8A` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| WETH | `0x4200000000000000000000000000000000000006` |
+| cbBTC | `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` |
+
+### Testnet (Base Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| BatchSettler | `0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918` |
+| Controller | `0xB64a532B71E711B5F45B906D9Fc09c184EC54CA0` |
+| MarginPool | `0x727ddBD04A691E73feaE26349F48144953Ef20d6` |
+| Oracle | `0x101cB9E8a3105EfB18A81E768238eFc041F31E15` |
+| Whitelist | `0xda732e343cfAd50Df28881B66f111779671a17E1` |
+| LUSD (mock USDC) | `0xAB51a471493832C1D70cef8ff937A850cf37c860` |
+| LETH (mock WETH) | `0x8A6Aa2304797898d46eC1d342Fedc817D3a973B6` |
+| LBTC (mock cbBTC) | `0x39fA11EbBE82699Fd9F79C566D7384064571d2b4` |
+
+All contracts are UUPS-proxied and verified on BaseScan.
+
+### Decimal Reference
+
+| Type | Decimals | Example |
+|------|----------|---------|
+| oToken amounts | 8 | `100000000` = 1 ETH notional |
+| Strike prices (on-chain) | 8 | `240000000000` = $2,400 |
+| USDC / bidPrice / premium | 6 | `5000000` = 5 USDC |
+| WETH | 18 | `1000000000000000000` = 1 WETH |
+
+---
+
+## Dependencies
+
+```
+pip install eth-account web3 requests websockets scipy
+```
+
+Optional for Hyperliquid hedging:
+```
+pip install hyperliquid-python-sdk
+```
+
+---
+
+## FAQ
+
+**Do I need to run a node?**
+No. Use any Base RPC. Public endpoints: `https://mainnet.base.org` (production) or `https://sepolia.base.org` (testnet)
+
+**How often should I refresh quotes?**
+Our reference MM refreshes every 60 seconds. Faster is better for tighter spreads.
+
+**Can my quotes be partially filled?**
+Yes. A single quote can be filled across multiple `executeOrder` calls until `maxAmount` is reached.
+
+**What if I don't hedge?**
+You take directional risk. If you're bullish ETH and selling puts, not hedging can be profitable. But you're no longer market-making; you're speculating with an edge.
+
+**What happens if the circuit breaker triggers?**
+`GET /prices` returns 503. Users can't see or fill quotes through the API. Your existing signed quotes remain valid on-chain until the deadline passes or you call `incrementMakerNonce()`.
+
+**Do I pay gas?**
+No. Users pay gas to execute orders. You only pay gas for: approving USDC (once), incrementing nonce (rare), and cancelling quotes on-chain (optional).
+
+**What's the protocol fee?**
+4% (400 bps) of gross premium. Deducted automatically. If you bid 5 USDC, the user receives 4.80 USDC and the protocol takes 0.20 USDC.
+
+**Can multiple MMs compete?**
+Yes. `GET /prices` shows the best bid across all MMs. If another MM bids higher than you on the same option, their quote is shown to users.

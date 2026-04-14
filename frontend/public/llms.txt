@@ -1,0 +1,299 @@
+# b1nary
+
+> Simplified options protocol on Base. Sell cash-secured puts or covered calls on ETH and BTC, earn premium instantly. Fully on-chain, permissionless, no sign-up required.
+
+---
+
+## Options 101
+
+### What is an option?
+
+An option is a contract that gives the buyer the right (not the obligation) to buy or sell an asset at a specific price (the **strike**) before a specific date (the **expiry**). The seller of the option collects a fee called **premium** upfront, in exchange for taking on the obligation.
+
+On b1nary, users are the sellers. They earn premium. A market maker is the buyer.
+
+### Key terms
+
+- **Strike price:** The price at which you commit to buy or sell the asset. You choose this.
+- **Expiry:** When the option contract ends. b1nary options expire weekly at 08:00 UTC.
+- **Premium:** The money you earn upfront for selling the option. Yours to keep regardless of outcome.
+- **Put option:** The right to sell an asset. When you sell a put, you commit to *buy* the asset at the strike price if it drops below that level.
+- **Call option:** The right to buy an asset. When you sell a call, you commit to *sell* the asset at the strike price if it rises above that level.
+- **ITM (in-the-money):** The option has value at expiry. For puts: price fell below strike. For calls: price rose above strike. The seller gets assigned.
+- **OTM (out-of-the-money):** The option expires worthless. The seller keeps their collateral and the premium. This is the best outcome for sellers.
+- **Assignment:** When an ITM option expires, the seller's obligation is executed. For puts: you buy the asset at the strike. For calls: you sell the asset at the strike.
+
+### What does "selling a put" mean?
+
+You deposit USDC as collateral and choose a strike price below the current market price. You earn premium immediately.
+
+- If the asset stays above your strike (OTM): your USDC is returned. You keep the premium. Free money.
+- If the asset drops below your strike (ITM): you buy the asset at your strike price. You still keep the premium, so your effective purchase price is `strike - premium`. You wanted to buy anyway — you just got paid to wait.
+
+### What does "selling a covered call" mean?
+
+You deposit the asset (ETH or cbBTC) as collateral and choose a strike price above the current market price. You earn premium immediately.
+
+- If the asset stays below your strike (OTM): your asset is returned. You keep the premium. Income on your holdings.
+- If the asset rises above your strike (ITM): you sell the asset at your strike price. You keep the premium plus the appreciation from current price to strike. You miss gains above the strike, but you locked in profit.
+
+### Risk profile
+
+| Scenario | What happens | Risk |
+|----------|-------------|------|
+| Sell put, price stays above strike | Collateral returned + keep premium | None |
+| Sell put, price drops below strike | You buy asset at strike (minus premium) | Asset could drop further after purchase |
+| Sell call, price stays below strike | Asset returned + keep premium | None |
+| Sell call, price rises above strike | You sell asset at strike (plus premium) | You miss gains above strike |
+
+**Worst case for put sellers:** The asset drops significantly after you're assigned. Your loss is `strike - current_price - premium`. But this loss is **unrealized** — you hold the asset, not a loss. You don't lose money until you sell back to USDC. Instead of selling at a loss, you sell covered calls above your cost basis (`strike - premium`). Each call earns more premium, lowering your cost basis further. You repeat until the price recovers above your cost basis, then your call gets assigned and you exit with profit. This is The Wheel — it turns a drawdown into a recovery engine.
+
+**Worst case for call sellers:** The asset rises sharply above your strike. You sell the asset at the strike and miss the upside above it. You still made money (premium + appreciation to strike), but less than if you had just held. You're now back in USDC — sell another put to re-enter at a price you like.
+
+**What you cannot lose:** More than your collateral. b1nary is fully collateralized — no margin, no liquidations.
+
+## Strategies
+
+### The Wheel (recommended for automation)
+
+A continuous cycle that earns premium in any market direction:
+
+1. **Start with USDC.** Sell a cash-secured put at a strike you'd buy at.
+2. **If OTM** (asset stayed above strike): collateral returned. Keep premium. Sell another put.
+3. **If ITM** (asset dropped below strike): you receive the asset via physical delivery. Now sell a covered call above your cost basis.
+4. **If call OTM** (asset stayed below strike): keep asset and premium. Sell another call.
+5. **If call ITM** (asset rose above strike): asset sold at strike. Back to USDC. Return to step 1.
+
+You earn premium on every cycle. The wheel works best when you pick strikes you're genuinely comfortable with — prices where you'd want to buy or sell anyway.
+
+### Income generation
+
+If you hold ETH or BTC and want yield without selling, sell covered calls at strikes well above the current price. Most expire OTM. You keep your asset and collect premium every week. Risk: occasionally you sell your asset if it rallies sharply.
+
+### Buying the dip with yield
+
+If you want to accumulate an asset, sell puts at the price you'd buy at. You either get paid to wait (OTM) or buy at your target price minus premium (ITM). Either outcome is good.
+
+---
+
+## Environments
+
+b1nary runs on two environments. Use testnet for development and testing, production for real trading.
+
+### Production (Base mainnet)
+
+- **Chain:** Base (chain ID `8453`)
+- **API:** `https://api.b1nary.app`
+- **App:** `https://b1nary.app`
+- **Block explorer:** `https://basescan.org`
+- **RPC:** `https://mainnet.base.org`
+- **Assets:** ETH, cbBTC. Puts collateralized with USDC, calls with WETH or cbBTC.
+
+| Contract | Address |
+|----------|---------|
+| BatchSettler | `0xd281ADdB8b5574360Fd6BFC245B811ad5C582a3B` |
+| Controller | `0x2Ab6D1c41f0863Bc2324b392f1D8cF073cF42624` |
+| MarginPool | `0xa1e04873F6d112d84824C88c9D6937bE38811657` |
+| OTokenFactory | `0x0701b7De84eC23a3CaDa763bCA7A9E324486F6D7` |
+| Oracle | `0x09daa0194A3AF59b46C5443aF9C20fAd98347671` |
+| Whitelist | `0xC0E6b9F214151cEDbeD3735dF77E9d8EE70ebA8A` |
+| AddressBook | `0x48FE24a69417038a2D3d46B2B6B9De03b884eD72` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| WETH | `0x4200000000000000000000000000000000000006` |
+| cbBTC | `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` |
+
+### Testnet (Base Sepolia)
+
+- **Chain:** Base Sepolia (chain ID `84532`)
+- **API:** `https://optionsprotocolbackend-staging.up.railway.app`
+- **App:** `https://staging.b1nary.app`
+- **Block explorer:** `https://sepolia.basescan.org`
+- **RPC:** `https://sepolia.base.org`
+- **Assets:** ETH, BTC (mock tokens). No real money.
+
+| Contract | Address |
+|----------|---------|
+| BatchSettler | `0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918` |
+| Controller | `0xB64a532B71E711B5F45B906D9Fc09c184EC54CA0` |
+| MarginPool | `0x727ddBD04A691E73feaE26349F48144953Ef20d6` |
+| OTokenFactory | `0x1cEA6AE65c06972249831f617ea196863Fb66e6D` |
+| Oracle | `0x101cB9E8a3105EfB18A81E768238eFc041F31E15` |
+| Whitelist | `0xda732e343cfAd50Df28881B66f111779671a17E1` |
+| AddressBook | `0x9e8cd9a79d667f4154e123604bF62d35a3d9673C` |
+| LUSD (mock USDC) | `0xAB51a471493832C1D70cef8ff937A850cf37c860` |
+| LETH (mock WETH) | `0x8A6Aa2304797898d46eC1d342Fedc817D3a973B6` |
+| LBTC (mock cbBTC) | `0x39fA11EbBE82699Fd9F79C566D7384064571d2b4` |
+
+All contracts are UUPS-proxied and verified on BaseScan.
+
+---
+
+## What Your Agent Must Do
+
+This is the complete job description for a trading agent on b1nary. Sell cash-secured puts or covered calls to earn premium.
+
+### One-time setup
+
+1. **Get test tokens (testnet only).** Call `POST /faucet` with `{"address": "0xYourWallet"}`. You receive 0.005 ETH (gas), 50 LETH (test WETH), and 100,000 LUSD (test USDC). One claim per wallet.
+2. **Approve collateral to MarginPool.** Call `approve(MarginPool, max)` on the collateral token. For puts: approve USDC. For calls: approve WETH (or cbBTC). One transaction per token.
+
+### Every cycle (run in a loop)
+
+3. **Read prices.** `GET /prices` returns the live option price sheet with signed quotes from market makers. Each entry has strike, expiry, premium, delta, and all the EIP-712 data needed for execution. Optional `?asset=eth` or `?asset=btc` to filter. Returns 503 if circuit breaker is active — wait and retry.
+4. **Pick an option.** Choose based on your strategy. The entry must have `signature` and `otoken_address` present. Filter by `option_type` (PUT or CALL), `strike`, `expiry_days`, `premium`, and `delta`.
+5. **Calculate collateral.**
+   - Puts: `collateral = (amount * strike_price_8dec) / 1e10` in USDC (6 decimals)
+   - ETH Calls: `collateral = amount * 1e10` in WETH (18 decimals)
+   - BTC Calls: `collateral = amount` in cbBTC (8 decimals, same as oToken)
+6. **Execute on-chain.** Call `executeOrder(quote, signature, amount, collateral)` on BatchSettler. The quote struct and signature come directly from the `/prices` response. Premium arrives in your wallet in the same transaction.
+7. **Check your position.** `GET /positions/{your_address}` shows all open and settled positions with `outcome` field.
+
+### At expiry (weekly, 08:00 UTC)
+
+8. **Settlement is automatic.** OTM: your collateral is returned. ITM: physical delivery occurs (you receive the asset for puts, USDC for calls).
+9. **Decide next move.** Check the `outcome` field on your settled position and continue the cycle (see The Wheel strategy above).
+
+### Recommended strategy: The Wheel
+
+The optimal automated strategy is a continuous cycle:
+
+1. Start with USDC. Sell a cash-secured put at a strike you'd buy at.
+2. If OTM (asset stayed above strike): collateral returned. Collect premium, sell another put.
+3. If ITM (asset dropped below strike): you receive the asset via physical delivery. Now sell a covered call.
+4. If call OTM (asset stayed below strike): keep asset and premium. Sell another covered call.
+5. If call ITM (asset rose above strike): asset sold at strike. Back to USDC. Return to step 1.
+
+Premium earned on every cycle regardless of direction. Use `GET /positions/{address}` to monitor settlement.
+
+---
+
+## API Endpoints
+
+Use the API URL for your target environment (see Environments section above).
+
+### Public (no auth)
+
+- **GET /prices**: Live option price sheet. Optional `?asset=eth` or `?asset=btc`. Each entry: strike, expiry, premium, delta, IV, spot, available amount, oToken address, and EIP-712 quote data (`signature`, `mm_address`, `bid_price_raw`, `deadline`, `quote_id`, `max_amount_raw`, `maker_nonce`). Returns 503 if circuit breaker is active.
+- **GET /positions/{address}**: All positions for a wallet. Fields: `otoken_address`, `vault_id`, `amount`, `strike_price`, `expiry`, `is_put`, `is_settled`, `is_itm`, `settlement_type`, `outcome`, `net_premium`, `collateral`, `asset`.
+- **GET /spot?asset=eth**: Current spot price for an asset.
+- **GET /capacity?asset=eth**: Market capacity, max position size, market status (active/degraded/full).
+- **GET /prices/simulate?strike=2400&side=sell**: Back-test a 7-day put at a given strike. Returns premium, assignment outcome, comparison vs hold/stake/DCA.
+- **POST /faucet**: Testnet only. Test tokens + gas. Send `{"address": "0x..."}`. Receives test WETH + test USDC + ETH. One claim per wallet.
+
+### Market Maker (requires `X-API-Key` header)
+
+- **POST /mm/quotes**: Submit signed EIP-712 quotes. Validates signatures, deadlines, nonces.
+- **GET /mm/quotes**: Active, non-expired quotes for the authenticated MM.
+- **DELETE /mm/quotes**: Cancel all active quotes.
+
+For the full market making guide, see [llms-mm.txt](https://b1nary.app/llms-mm.txt).
+
+---
+
+## Key Contract Functions
+
+**executeOrder(Quote calldata quote, bytes calldata signature, uint256 amount, uint256 collateral) returns (uint256 vaultId)**
+On BatchSettler. Permissionless. The `quote` struct: `{address oToken, uint256 bidPrice, uint256 deadline, uint256 quoteId, uint256 maxAmount, uint256 makerNonce}`. The `signature` is the MM's EIP-712 signature. `amount` in oToken units (8 decimals, 1e8 = 1 ETH notional). Atomically: verifies signature, locks collateral, mints oTokens to MM, pays premium to user (minus 4% protocol fee). Quote fields and signature come from `GET /prices`.
+
+**makerNonce(address mm) returns (uint256)**
+On BatchSettler. Current nonce for an MM. Quotes with stale nonce are rejected.
+
+**incrementMakerNonce() returns (uint256)**
+On BatchSettler. Invalidates all outstanding signed quotes (circuit breaker).
+
+**getVault(address owner, uint256 vaultId) returns (tuple)**
+On Controller. Vault details: shortOtoken, collateralAsset, shortAmount, collateralAmount.
+
+---
+
+## Integration Example
+
+```python
+import requests
+from web3 import Web3
+
+# -- Pick your environment --
+# Production (Base mainnet, real money):
+# API = "https://api.b1nary.app"
+# RPC = "https://mainnet.base.org"
+# BATCH_SETTLER = "0xd281ADdB8b5574360Fd6BFC245B811ad5C582a3B"
+# MARGIN_POOL = "0xa1e04873F6d112d84824C88c9D6937bE38811657"
+# USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
+# Testnet (Base Sepolia, no real money):
+API = "https://optionsprotocolbackend-staging.up.railway.app"
+RPC = "https://sepolia.base.org"
+BATCH_SETTLER = "0x766bD3aF1D102f7EbcB65a7B7bC12478C2DbA918"
+MARGIN_POOL = "0x727ddBD04A691E73feaE26349F48144953Ef20d6"
+USDC = "0xAB51a471493832C1D70cef8ff937A850cf37c860"  # LUSD on testnet
+
+w3 = Web3(Web3.HTTPProvider(RPC))
+
+# 1. Get test tokens (testnet only, one-time)
+requests.post(f"{API}/faucet", json={"address": MY_ADDRESS})
+
+# 2. Approve USDC to MarginPool (one-time)
+usdc = w3.eth.contract(address=USDC, abi=ERC20_ABI)
+usdc.functions.approve(MARGIN_POOL, 2**256 - 1).transact({"from": MY_ADDRESS})
+
+# 3. Read prices
+prices = requests.get(f"{API}/prices?asset=eth").json()
+
+# 4. Pick a PUT with an otoken_address
+put = next(p for p in prices if p["option_type"] == "put" and p["otoken_address"])
+
+# 5. Calculate collateral for $2,400 commitment
+usd_amount = 2400
+eth_units = usd_amount / put["strike"]
+otoken_amount = int(eth_units * 1e8)
+strike_8dec = int(put["strike"] * 1e8)
+collateral = (otoken_amount * strike_8dec) // 10**10
+
+# 6. Build quote struct from API response
+quote = (
+    put["otoken_address"],      # oToken
+    int(put["bid_price_raw"]),   # bidPrice
+    int(put["deadline"]),        # deadline
+    int(put["quote_id"]),        # quoteId
+    int(put["max_amount_raw"]),  # maxAmount
+    int(put["maker_nonce"]),     # makerNonce
+)
+
+# 7. Execute order
+settler = w3.eth.contract(address=BATCH_SETTLER, abi=SETTLER_ABI)
+tx = settler.functions.executeOrder(
+    quote,
+    bytes.fromhex(put["signature"][2:]),
+    otoken_amount,
+    collateral,
+).transact({"from": MY_ADDRESS})
+
+# 8. Check position
+positions = requests.get(f"{API}/positions/{MY_ADDRESS}").json()
+```
+
+---
+
+## Decimal Reference
+
+| Type | Decimals | Example |
+|------|----------|---------|
+| oToken amounts | 8 | `100000000` = 1 ETH notional |
+| Strike prices (on-chain) | 8 | `240000000000` = $2,400 |
+| USDC | 6 | `5000000` = 5 USDC |
+| WETH | 18 | `1000000000000000000` = 1 WETH |
+| cbBTC | 8 | `100000000` = 1 cbBTC |
+
+## Market Making
+
+Want to provide liquidity instead of consuming it? See the full market making guide: [llms-mm.txt](https://b1nary.app/llms-mm.txt). Covers pricing, hedging, EIP-712 signing, and the complete integration flow.
+
+## Additional Info
+
+- [b1nary app](https://b1nary.app): Web interface (production)
+- [Testnet app](https://staging.b1nary.app): Web interface (testnet)
+- Protocol fee: 4% (400 bps), deducted from premium automatically
+- Options expire weekly at 08:00 UTC with automatic settlement
+- ITM options settle via physical delivery (Aave flash loan + Uniswap swap)
+- OTM options return collateral to the seller
+- Supported assets: ETH and cbBTC (more coming)
