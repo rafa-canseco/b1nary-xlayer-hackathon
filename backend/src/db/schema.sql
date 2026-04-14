@@ -50,10 +50,12 @@ create table if not exists order_events (
   tx_hash text not null unique,
   block_number bigint not null,
   log_index integer not null,
-  chain text not null default 'base',
+  chain text not null default 'base'
+    check (chain in ('base', 'solana', 'xlayer')),
   user_address text not null,
   mm_address text,
   otoken_address text not null,
+  asset text not null default 'eth',
   amount numeric not null,
   premium numeric not null,
   gross_premium numeric,
@@ -76,6 +78,11 @@ create table if not exists order_events (
   delivered_asset text,
   delivered_amount numeric,
   delivery_tx_hash text,
+  collateral_usd float,
+  reminder_sent_at timestamptz,
+  result_sent_at timestamptz,
+  bridge_job_id uuid,
+  source_chain text,
   -- Range grouping (put+call pair share a group_id)
   group_id uuid,
   -- Indexing metadata
@@ -93,14 +100,16 @@ create index if not exists idx_order_events_unsettled
 create index if not exists idx_order_events_group_id
   on order_events(group_id) where group_id is not null;
 
--- Singleton row tracking last indexed block (for resumability)
+-- Per-EVM indexer cursors. id=1 is Base, id=2 is XLayer.
 create table if not exists indexer_state (
-  id integer primary key default 1 check (id = 1),
+  id integer primary key default 1,
   last_indexed_block bigint not null default 0,
   updated_at timestamptz not null default now()
 );
 
-insert into indexer_state (last_indexed_block) values (0)
+insert into indexer_state (id, last_indexed_block) values (1, 0)
+  on conflict (id) do nothing;
+insert into indexer_state (id, last_indexed_block) values (2, 0)
   on conflict (id) do nothing;
 
 -- Solana event indexer cursor (independent from Base indexer_state)
@@ -165,6 +174,36 @@ create table if not exists waitlist (
 );
 
 -- ============================================================
+-- Analytics / engagement events
+-- ============================================================
+
+create table if not exists slider_interactions (
+  id uuid primary key default gen_random_uuid(),
+  session_id text not null,
+  selected_price numeric not null,
+  side text not null default 'buy',
+  shown_premium numeric,
+  converted_to_signup boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_slider_interactions_session
+  on slider_interactions(session_id);
+
+create table if not exists engagement_events (
+  id uuid primary key default gen_random_uuid(),
+  user_address text,
+  event_type text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_engagement_events_user
+  on engagement_events(user_address);
+create index if not exists idx_engagement_events_type
+  on engagement_events(event_type);
+
+-- ============================================================
 -- Market Maker quotes (EIP-712 signed, stored off-chain)
 -- ============================================================
 
@@ -182,6 +221,9 @@ create table if not exists mm_quotes (
   strike_price numeric,
   expiry bigint,
   is_put boolean,
+  chain text not null default 'base'
+    check (chain in ('base', 'solana', 'xlayer')),
+  asset text not null default 'eth',
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   unique (mm_address, quote_id)
@@ -193,6 +235,10 @@ create index if not exists idx_mm_quotes_otoken
   on mm_quotes (otoken_address) where is_active = true;
 create index if not exists idx_mm_quotes_mm
   on mm_quotes (mm_address) where is_active = true;
+create index if not exists idx_mm_quotes_chain
+  on mm_quotes (chain);
+create index if not exists idx_mm_quotes_asset
+  on mm_quotes (asset);
 
 -- ============================================================
 -- Market Maker API keys
@@ -214,23 +260,32 @@ create table if not exists mm_api_keys (
 create table if not exists available_otokens (
   id uuid primary key default gen_random_uuid(),
   otoken_address text not null unique,
+  underlying text not null,
   strike_price numeric not null,
   expiry bigint not null,
   is_put boolean not null,
   collateral_asset text not null,
+  chain text not null default 'base'
+    check (chain in ('base', 'solana', 'xlayer')),
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_available_otokens_expiry
   on available_otokens(expiry);
+create index if not exists idx_available_otokens_underlying
+  on available_otokens(underlying);
+create index if not exists idx_available_otokens_chain
+  on available_otokens(chain);
 
 -- ============================================================
 -- MM capacity reports (one row per MM, upserted on each report)
 -- ============================================================
 
 create table if not exists mm_capacity (
-  mm_address text primary key,
-  asset text not null default 'ETH',
+  mm_address text not null,
+  asset text not null default 'eth',
+  chain text not null default 'base'
+    check (chain in ('base', 'solana', 'xlayer')),
   capacity_eth numeric not null,
   capacity_usd numeric not null,
   premium_pool_usd numeric,
@@ -241,5 +296,47 @@ create table if not exists mm_capacity (
   open_positions_notional_usd numeric,
   status text not null default 'active'
     check (status in ('active', 'degraded', 'full')),
-  reported_at timestamptz not null default now()
+  reported_at timestamptz not null default now(),
+  primary key (mm_address, asset)
 );
+
+create index if not exists idx_mm_capacity_chain
+  on mm_capacity(chain);
+
+-- ============================================================
+-- CCTP bridge jobs
+-- ============================================================
+
+create table if not exists bridge_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  source_chain text not null check (source_chain in ('base', 'solana')),
+  dest_chain text not null check (dest_chain in ('base', 'solana')),
+  status text not null default 'pending'
+    check (status in (
+      'pending', 'attesting', 'minting',
+      'trading', 'completed', 'mint_completed',
+      'failed', 'mint_completed_trade_failed'
+    )),
+  burn_tx_hash text not null,
+  burn_amount text not null,
+  mint_recipient text not null,
+  quote_id text,
+  signed_trade_tx text,
+  attestation_message text,
+  attestation_signature text,
+  mint_tx_hash text,
+  trade_tx_hash text,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_bridge_jobs_status
+  on bridge_jobs(status);
+create index if not exists idx_bridge_jobs_user
+  on bridge_jobs(user_id);
+create unique index if not exists idx_bridge_jobs_burn_tx
+  on bridge_jobs(burn_tx_hash);
+create unique index if not exists idx_bridge_jobs_quote_id
+  on bridge_jobs(quote_id) where quote_id is not null;
