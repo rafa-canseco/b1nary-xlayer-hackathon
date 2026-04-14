@@ -1,6 +1,8 @@
 # b1nary XLayer Hackathon
 
-b1nary brings structured volatility products to XLayer. This hackathon build deploys an OKB options market on XLayer testnet with executable quotes, mock liquidity, and a frontend trading flow.
+b1nary brings structured volatility products to XLayer. This hackathon build deploys an OKB options market on XLayer testnet with executable quotes, mock liquidity, a frontend trading flow, and an agent-readable interface for OKX OnchainOS Agentic Wallet.
+
+The core idea: b1nary is not only a dapp. It is an agent-friendly options protocol. An agent can read [`llms.txt`](llms.txt), understand the deployed XLayer contracts, fetch executable OKB quotes, approve collateral, and call `BatchSettler.executeOrder(...)` through Agentic Wallet.
 
 ## Demo
 
@@ -8,6 +10,7 @@ b1nary brings structured volatility products to XLayer. This hackathon build dep
 - Chain ID: `1952`
 - RPC: `https://testrpc.xlayer.tech/terigon`
 - Explorer: `https://www.okx.com/web3/explorer/xlayer-test`
+- Agent interface: [`llms.txt`](llms.txt)
 - Demo video: add link after recording
 
 ## Repository Layout
@@ -20,6 +23,22 @@ market-maker/    Automated EIP-712 quote signer for OKB PUT/CALL markets
 deployments/     Public XLayer testnet deployment addresses
 docs/            Architecture and demo notes
 ```
+
+## Agent Interface
+
+The repository exposes a root [`llms.txt`](llms.txt) for agents and serves the same content from `frontend/public/llms.txt` when the frontend is deployed.
+
+Agent flow:
+
+1. Read `llms.txt`.
+2. Get an XLayer address from OKX OnchainOS Agentic Wallet.
+3. Fund the Agentic Wallet through `POST /faucet/xlayer`.
+4. Fetch executable OKB quotes from `GET /prices?asset=okb`.
+5. Approve MockUSDC or MockOKB to MarginPool.
+6. Execute a selected quote through BatchSettler.
+7. Save the XLayer tx hashes as proof of work.
+
+See [`docs/agentic-wallet.md`](docs/agentic-wallet.md) for the demo flow.
 
 ## XLayer Testnet Contracts
 
@@ -41,10 +60,12 @@ docs/            Architecture and demo notes
 ## Demo Flow
 
 1. Connect a wallet to XLayer testnet.
-2. Claim test tokens through the XLayer faucet flow.
-3. Open the OKB market and view executable PUT/CALL quotes.
-4. Accept a quote.
-5. Confirm the on-chain transaction on the XLayer explorer.
+2. Open `llms.txt` and show the agent-readable protocol interface.
+3. Show the Agentic Wallet XLayer address.
+4. Claim test tokens through the XLayer faucet flow.
+5. Open the OKB market and view executable PUT/CALL quotes.
+6. Approve collateral and accept a quote.
+7. Confirm the on-chain transaction on the XLayer explorer.
 
 ## Local Demo
 
@@ -71,3 +92,16 @@ uv run python -m src.main
 ```
 
 Never commit real private keys, API keys, service role keys, or `.env` files.
+
+## Deployment
+
+Use separate disposable services for the hackathon:
+
+- Frontend: Vercel, ideally `https://xlayer.b1nary.app`
+- Backend: Railway
+- Market maker: Railway
+- Database: separate Supabase project
+
+`xlayer.b1nary.app` can point to a Vercel project from this separate public repo. The DNS provider for `b1nary.app` only needs the record Vercel requests, typically a CNAME for `xlayer`.
+
+See [`docs/deployment.md`](docs/deployment.md).
