@@ -76,20 +76,26 @@ https://github.com/rafa-canseco/b1nary-xlayer-hackathon
 - oTokens: 8 decimals.
 - Oracle price format: Chainlink-style 8 decimals.
 
-## Agentic Wallet Integration
+## Wallet Integration
 
-Use OKX OnchainOS Agentic Wallet for on-chain proof and protocol interaction.
+This deployment runs on XLayer **testnet** (chain ID 1952). There are two ways to interact:
 
-Useful commands:
+### Option A: Any EOA wallet (recommended for testnet)
 
-```bash
-onchainos wallet status
-onchainos wallet addresses --chain xlayer
-onchainos wallet balance --chain xlayer
-onchainos wallet contract-call --chain xlayer --to <contract> --input-data <hex_calldata>
-```
+Use any EVM wallet (MetaMask, OKX Wallet, Rabby, etc.) connected to XLayer testnet. The frontend at `xlayer.b1nary.app` handles wallet connection, faucet claims, approvals, and order execution through the browser.
 
-`wallet contract-call` sends EVM calldata from the Agentic Wallet. Do not use `--force` on the first transaction attempt. If OnchainOS returns a confirmation response, show the message to the human and only rerun with `--force` after explicit approval.
+For agents, use any EVM-compatible signer library (ethers.js, web3.py, viem) to sign transactions directly with an EOA private key. The faucet, approve, and executeOrder flows work with standard EVM calls — no account abstraction required.
+
+### Option B: OKX Agentic Wallet (mainnet only)
+
+OnchainOS Agentic Wallet currently supports XLayer **mainnet** (chain ID 196) only. Testnet (1952) is not supported for `wallet contract-call`. The Agentic Wallet can still be used for:
+
+- `onchainos wallet status` — check wallet status
+- `onchainos wallet addresses --chain xlayer` — get your XLayer address
+- `onchainos wallet balance --chain xlayer` — check mainnet balances
+- `onchainos wallet send` — send native OKB transfers
+
+For full contract interaction (approve, executeOrder) via Agentic Wallet, deploy the protocol to XLayer mainnet (chain ID 196) and fund the wallet with real OKB.
 
 ## API Endpoints
 
@@ -117,22 +123,22 @@ Faucet response includes tx hashes for gas, MockOKB, and MockUSDC funding.
 
 ## Trading Flow For Agents
 
-### 1. Get Agentic Wallet address
+### 1. Get your wallet address
+
+Use any EVM wallet address on XLayer testnet (chain ID 1952). For Agentic Wallet (mainnet only):
 
 ```bash
 onchainos wallet addresses --chain xlayer
 ```
 
-Use the XLayer/EVM address in all following steps.
+### 2. Fund your wallet
 
-### 2. Fund the Agentic Wallet
-
-Call the backend faucet:
+Call the backend faucet with your address:
 
 ```bash
 curl -X POST "$API/faucet/xlayer" \
   -H "Content-Type: application/json" \
-  -d '{"address":"0xAgenticWallet"}'
+  -d '{"address":"0xYourWalletAddress"}'
 ```
 
 The faucet sends:
@@ -164,9 +170,9 @@ Skip entries missing `signature` or `otoken_address`.
 
 ### 4. Approve collateral
 
-Before selling a PUT, approve MockUSDC to MarginPool.
+Before selling a PUT, approve MockUSDC to BatchSettler.
 
-Before selling a CALL, approve MockOKB to MarginPool.
+Before selling a CALL, approve MockOKB to BatchSettler.
 
 ERC-20 approve signature:
 
@@ -177,7 +183,7 @@ approve(address spender, uint256 amount)
 Spender:
 
 ```text
-MarginPool = 0x3b14faD41CcbD471296e11Ea348dC303aA3A4156
+BatchSettler = 0x6aea5B95d64962E7F001218159cB5fb11712E8B1
 ```
 
 Use max approval for demo wallets only:
@@ -186,16 +192,18 @@ Use max approval for demo wallets only:
 amount = 2^256 - 1
 ```
 
-Send the encoded calldata through:
+Using any EVM library (e.g. cast):
 
 ```bash
-onchainos wallet contract-call \
-  --chain xlayer \
-  --to 0x4A881f3f745B99f0C5575577D80958a5a16b7347 \
-  --input-data <approve_calldata>
+cast send 0x4A881f3f745B99f0C5575577D80958a5a16b7347 \
+  "approve(address,uint256)" \
+  0x6aea5B95d64962E7F001218159cB5fb11712E8B1 \
+  115792089237316195423570985008687907853269984665640564039457584007913129639935 \
+  --private-key $YOUR_KEY \
+  --rpc-url https://testrpc.xlayer.tech/terigon
 ```
 
-For MockOKB calls, replace `--to` with:
+For MockOKB calls, replace the token address with:
 
 ```text
 0x1B5D20CcA8D0B8F5FB25aA06735a57E1B104A1A8
@@ -247,12 +255,16 @@ BatchSettler = 0x6aea5B95d64962E7F001218159cB5fb11712E8B1
 
 Send encoded calldata:
 
+Send the encoded calldata to the BatchSettler using any EVM signer:
+
 ```bash
-onchainos wallet contract-call \
-  --chain xlayer \
-  --to 0x6aea5B95d64962E7F001218159cB5fb11712E8B1 \
-  --input-data <executeOrder_calldata>
+cast send 0x6aea5B95d64962E7F001218159cB5fb11712E8B1 \
+  <executeOrder_calldata> \
+  --private-key $YOUR_KEY \
+  --rpc-url https://testrpc.xlayer.tech/terigon
 ```
+
+Or via the frontend UI at `xlayer.b1nary.app/earn/okb` which handles encoding and signing automatically.
 
 The frontend contains a reference encoder in `frontend/src/lib/execution.ts`:
 
