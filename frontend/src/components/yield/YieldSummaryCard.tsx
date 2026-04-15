@@ -14,27 +14,23 @@ function assetLabel(slug: string): string {
 function toUsd(
   amount: number,
   asset: string,
-  ethSpot: number | undefined,
-  btcSpot: number | undefined,
+  okbSpot: number | undefined,
 ): number {
   if (asset === "usdc") return amount;
-  if (asset === "eth") return amount * (ethSpot ?? 0);
-  if (asset === "btc") return amount * (btcSpot ?? 0);
+  return amount * (okbSpot ?? 0);
   return 0;
 }
 
 interface Props {
   assets: YieldAssetSummary[];
-  ethSpot: number | undefined;
-  btcSpot: number | undefined;
+  okbSpot: number | undefined;
   hasPositions: boolean;
   aaveRates?: Record<string, number>;
 }
 
 export function YieldSummaryCard({
   assets,
-  ethSpot,
-  btcSpot,
+  okbSpot,
   hasPositions,
   aaveRates,
 }: Props) {
@@ -50,9 +46,9 @@ export function YieldSummaryCard({
   let pendingUsd = 0;
   let deliveredUsd = 0;
   for (const a of assets) {
-    totalUsd += toUsd(a.total, a.asset, ethSpot, btcSpot);
-    pendingUsd += toUsd(a.pending, a.asset, ethSpot, btcSpot);
-    deliveredUsd += toUsd(a.delivered, a.asset, ethSpot, btcSpot);
+    totalUsd += toUsd(a.total, a.asset, okbSpot);
+    pendingUsd += toUsd(a.pending, a.asset, okbSpot);
+    deliveredUsd += toUsd(a.delivered, a.asset, okbSpot);
   }
 
   const hasYield = totalUsd > 0;
@@ -102,7 +98,7 @@ export function YieldSummaryCard({
           {nonZeroAssets.length > 0 && (
             <div className="border-t border-[var(--border)] pt-3 space-y-2">
               {nonZeroAssets.map((a) => {
-                const usd = toUsd(a.total, a.asset, ethSpot, btcSpot);
+                const usd = toUsd(a.total, a.asset, okbSpot);
                 return (
                   <div
                     key={a.asset}

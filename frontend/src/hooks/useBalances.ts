@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { formatUnits, type Address } from "viem";
-import { publicClient, ADDRESSES, ERC20_ABI, IS_XLAYER } from "@/lib/contracts";
+import { publicClient, ADDRESSES, ERC20_ABI } from "@/lib/contracts";
 
 interface Balances {
   usdRaw: bigint;
@@ -69,14 +69,7 @@ export function useBalances(address: Address | undefined, pollInterval = 15_000)
           functionName: "balanceOf",
           args: [address],
         }),
-        IS_XLAYER
-          ? BigInt(0)
-          : publicClient.readContract({
-              address: ADDRESSES.wbtc,
-              abi: ERC20_ABI,
-              functionName: "balanceOf",
-              args: [address],
-            }),
+        BigInt(0),
         publicClient.getBalance({ address }),
         mokbAddress
           ? publicClient.readContract({

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: "%s | b1nary",
   },
   description:
-    "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on Base.",
+    "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on X Layer.",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "48x48" },
@@ -27,13 +27,13 @@ export const metadata: Metadata = {
     siteName: "b1nary",
     title: "b1nary · Turn volatility into income",
     description:
-      "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on Base.",
+      "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on X Layer.",
   },
   twitter: {
     card: "summary",
     title: "b1nary · Turn volatility into income",
     description:
-      "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on Base.",
+      "Set your price on any asset. Get paid upfront. The volatility protocol for humans and AI agents. Live on X Layer.",
   },
 };
 

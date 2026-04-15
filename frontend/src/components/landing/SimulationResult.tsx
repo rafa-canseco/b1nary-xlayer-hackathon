@@ -120,7 +120,7 @@ export const SimulationResult = memo(function SimulationResult({
 
   const collateral = side === "buy"
     ? `$${strike.toLocaleString()}`
-    : "1 ETH";
+    : "1 OKB";
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/60 p-6 sm:p-8 space-y-6">

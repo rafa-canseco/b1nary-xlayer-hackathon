@@ -14,8 +14,7 @@ from src.api.activity import router as activity_router
 from src.api.leaderboard import router as leaderboard_router
 from src.api.notifications import router as notifications_router
 from src.api.yield_routes import router as yield_router
-from src.bridge.routes import router as bridge_router
-from src.config import settings, has_solana_config, has_xlayer_config, has_bridge_config
+from src.config import settings, has_xlayer_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,76 +45,34 @@ async def lifespan(app: FastAPI):
 
     tasks = []
 
-    has_on_chain_config = (
-        settings.batch_settler_address
-        and settings.operator_private_key
-        and settings.otoken_factory_address
-    )
-    if has_on_chain_config:
-        from src.bots import (
-            otoken_manager,
-            event_indexer,
-            expiry_settler,
-            circuit_breaker_bot,
-        )
-
-        tasks.append(asyncio.create_task(otoken_manager.run()))
-        tasks.append(asyncio.create_task(event_indexer.run()))
-        tasks.append(asyncio.create_task(expiry_settler.run()))
-        tasks.append(asyncio.create_task(circuit_breaker_bot.run()))
-        logger.info("Started %d on-chain bots", len(tasks))
-    else:
-        logger.info(
-            "On-chain bots not started: contract addresses or operator key not configured"
-        )
-
-    # Yield indexer needs controller + margin pool addresses
-    if settings.controller_address and settings.margin_pool_address:
-        from src.bots import yield_indexer
-
-        tasks.append(asyncio.create_task(yield_indexer.run()))
-        logger.info("Yield indexer started")
-
-    # Weekly aggregator only needs DB access, not on-chain config
+    # Weekly aggregator only needs DB access
     from src.bots import weekly_aggregator
 
     tasks.append(asyncio.create_task(weekly_aggregator.run()))
     logger.info("Weekly aggregator started")
 
-    # ── Solana bots ──
-    if has_solana_config():
+    # ── XLayer bots ──
+    if has_xlayer_config():
         from src.bots import (
-            solana_circuit_breaker_bot,
-            solana_event_indexer,
-            solana_expiry_settler,
-            solana_otoken_manager,
+            price_updater,
+            xlayer_circuit_breaker_bot,
+            xlayer_event_indexer,
+            xlayer_expiry_settler,
+            xlayer_otoken_manager,
         )
 
-        tasks.append(asyncio.create_task(solana_circuit_breaker_bot.run()))
-        tasks.append(asyncio.create_task(solana_event_indexer.run()))
-        tasks.append(asyncio.create_task(solana_expiry_settler.run()))
-        tasks.append(asyncio.create_task(solana_otoken_manager.run()))
-        logger.info(
-            "Solana bots started (cluster=%s): circuit breaker, event indexer, expiry settler, otoken manager",
-            settings.solana_cluster,
-        )
+        tasks.append(asyncio.create_task(price_updater.run()))
+        tasks.append(asyncio.create_task(xlayer_otoken_manager.run()))
+        tasks.append(asyncio.create_task(xlayer_event_indexer.run()))
+        tasks.append(asyncio.create_task(xlayer_expiry_settler.run()))
+        tasks.append(asyncio.create_task(xlayer_circuit_breaker_bot.run()))
+        logger.info("XLayer bots started: price updater, otoken manager, event indexer, expiry settler, circuit breaker")
     else:
         logger.info(
-            "Solana bots not started: SOLANA_RPC_URL or program IDs not configured"
+            "XLayer bots not started: XLAYER_RPC_URL or operator key not configured"
         )
 
-    # ── Bridge relayer ──
-    if has_bridge_config():
-        from src.bridge import relayer as bridge_relayer
-
-        tasks.append(asyncio.create_task(bridge_relayer.run()))
-        logger.info("Bridge relayer started")
-    else:
-        logger.info(
-            "Bridge relayer not started: CCTP addresses or relayer keys not configured"
-        )
-
-    # Notification bot only needs Resend API key, not on-chain config
+    # Notification bot only needs Resend API key
     if settings.resend_api_key:
         from src.bots import notification_bot
 
@@ -133,7 +90,7 @@ async def lifespan(app: FastAPI):
 openapi_tags = [
     {
         "name": "Market Data",
-        "description": "Live ETH option prices from all market makers. Picks the best bid per oToken and includes EIP-712 signature data for on-chain execution.",
+        "description": "Live OKB option prices from all market makers. Picks the best bid per oToken and includes EIP-712 signature data for on-chain execution.",
     },
     {
         "name": "Market Making",
@@ -176,10 +133,6 @@ openapi_tags = [
         "description": "Email notification opt-in, verification, and unsubscribe.",
     },
     {
-        "name": "Bridge",
-        "description": "CCTP V2 cross-chain USDC bridging and trade execution. Orchestrates burn→attestation→mint→trade.",
-    },
-    {
         "name": "System",
         "description": "Health checks and operational status.",
     },
@@ -187,18 +140,18 @@ openapi_tags = [
 
 app = FastAPI(
     title="b1nary API",
-    summary="Simplified ETH options protocol on Base",
+    summary="Simplified OKB options protocol on XLayer",
     description=(
-        "b1nary lets users sell cash-secured puts and covered calls on ETH and earn premium. "
+        "b1nary lets users sell cash-secured puts and covered calls on OKB and earn premium. "
         "A market maker is the counterparty; settlement is instant and on-chain.\n\n"
         "## Quick start for AI agents\n\n"
         "1. `GET /prices` — fetch the current option price menu (best bid across all MMs)\n"
         "2. Pick a quote and call `executeOrder()` on the BatchSettler contract with the included signature\n"
         "3. `GET /positions/{address}` — check the user's open and settled positions\n\n"
         "All monetary values are in USD unless noted. On-chain amounts use the token's native decimals "
-        "(oToken = 8, USDC = 6, WETH = 18).\n\n"
-        f"**Chain:** Base (chain ID {settings.chain_id})  \n"
-        "**Contracts:** see [BaseScan](https://basescan.org)"
+        "(oToken = 8, USDC = 6).\n\n"
+        f"**Chain:** XLayer testnet (chain ID {settings.xlayer_chain_id})  \n"
+        "**Contracts:** see [OKLink XLayer Explorer](https://www.oklink.com/xlayer-test)"
     ),
     version="0.4.0",
     openapi_tags=openapi_tags,
@@ -221,21 +174,8 @@ app.include_router(activity_router)
 app.include_router(leaderboard_router)
 app.include_router(notifications_router)
 app.include_router(yield_router)
-app.include_router(bridge_router)
 
 if settings.beta_mode:
-    from src.api.demo import router as demo_router
-    from src.api.faucet import router as faucet_router
-
-    app.include_router(demo_router)
-    app.include_router(faucet_router)
-
-    if has_solana_config() and settings.solana_usdc_mint:
-        from src.api.solana_faucet import router as solana_faucet_router
-
-        app.include_router(solana_faucet_router)
-        logger.info("Solana faucet enabled at /faucet/solana")
-
     if has_xlayer_config() and settings.wokb_address:
         from src.api.xlayer_faucet import router as xlayer_faucet_router
 
@@ -245,15 +185,11 @@ if settings.beta_mode:
     app.openapi_tags = (app.openapi_tags or []) + [  # type: ignore[operator]
         {
             "name": "Faucet",
-            "description": "Send gas ETH + test tokens on testnet. 1 claim per wallet (permanent). Beta only — disabled in production.",
-        },
-        {
-            "name": "Demo",
-            "description": "Beta-only endpoints for triggering instant settlement in testnet. Requires X-Demo-Key header. Disabled in production.",
+            "description": "Send gas OKB + test tokens on XLayer testnet. 1 claim per wallet. Beta only.",
         },
     ]
     app.openapi_schema = None  # invalidate cached schema so tag mutation takes effect
-    logger.info("Beta mode: /demo/settle and /faucet endpoints enabled")
+    logger.info("Beta mode: /faucet/xlayer endpoint enabled")
 
 
 @app.get("/health", tags=["System"], summary="Health check")

@@ -71,8 +71,8 @@ class PriceResponse(BaseModel):
         description="MM's makerNonce at time of signing",
     )
     chain: str = Field(
-        default="base",
-        description="Chain this quote is on (base or solana)",
+        default="xlayer",
+        description="Chain this quote is on (xlayer)",
     )
     position_count: int = Field(
         default=0,

@@ -83,11 +83,11 @@ async def get_index_price(asset: Asset) -> float:
     return data["result"]["index_price"]
 
 
-async def get_eth_iv() -> float:
-    """Fetch ETH IV from Deribit (backward compat)."""
-    return await get_iv(Asset.ETH)
+async def get_okb_iv() -> float:
+    """Fetch OKB IV (via proxy since no Deribit listing)."""
+    return await get_iv(Asset.OKB)
 
 
-async def get_eth_index_price() -> float:
-    """Get ETH/USD index price from Deribit (backward compat)."""
-    return await get_index_price(Asset.ETH)
+async def get_okb_index_price() -> float:
+    """Get OKB/USD index price from Deribit (if available)."""
+    return await get_index_price(Asset.OKB)

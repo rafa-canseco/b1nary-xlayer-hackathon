@@ -139,14 +139,14 @@ export function PriceSlider({ spot }: { spot: number }) {
               : "text-[var(--text-secondary)] hover:text-[var(--text)]"
           }`}
         >
-          I have ETH
+          I have OKB
         </button>
       </div>
 
       {/* Header */}
       <div className="space-y-2">
         <h2 className="text-[clamp(1.3rem,3vw,2rem)] text-[var(--bone)] font-light">
-          I&apos;d {side} ETH at{" "}
+          I&apos;d {side} OKB at{" "}
           <span className="text-[var(--accent)] font-semibold font-mono transition-all duration-200">
             ${selectedStrike.toLocaleString()}
           </span>

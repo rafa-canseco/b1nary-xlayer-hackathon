@@ -17,13 +17,11 @@ log = logging.getLogger(__name__)
 SKIP_DELTA_THRESHOLD = 0.90
 MIN_HOURS_TO_EXPIRY = 1
 
-# All chains use USDC (6 decimals) for bidPrice.
-PRICE_SCALE_BASE = 1_000_000
-PRICE_SCALE_SOLANA = 1_000_000
-PRICE_SCALE_XLAYER = 1_000_000
+# USDC uses 6 decimals for bidPrice.
+PRICE_SCALE = 1_000_000
 
 # Chain index offset to avoid quote ID collisions across chains
-_CHAIN_OFFSET = {"base": 0, "solana": 100_000, "xlayer": 200_000}
+_CHAIN_OFFSET = {"xlayer": 0}
 
 
 def build_quotes(
@@ -34,7 +32,7 @@ def build_quotes(
     asset: str = "eth",
     inventory_imbalance: float = 0.0,
     utilization: float = 0.0,
-    chain: str = "base",
+    chain: str = "xlayer",
 ) -> list[dict[str, Any]]:
     """Price each oToken and build a list of quote dicts ready for signing.
 
@@ -48,21 +46,10 @@ def build_quotes(
     now = int(time.time())
     effective_max = max_amount_raw if max_amount_raw is not None else config.MAX_AMOUNT
 
-    # Pick price scale by chain
-    _price_scales = {
-        "base": PRICE_SCALE_BASE,
-        "solana": PRICE_SCALE_SOLANA,
-        "xlayer": PRICE_SCALE_XLAYER,
-    }
-    price_scale = _price_scales.get(chain, PRICE_SCALE_BASE)
+    price_scale = PRICE_SCALE
 
-    # Offset quote_ids per chain + asset so quotes don't collide
-    _chain_asset_map = {
-        "base": config.ASSETS,
-        "solana": config.SOLANA_ASSETS,
-        "xlayer": config.XLAYER_ASSETS,
-    }
-    all_assets = _chain_asset_map.get(chain, config.ASSETS)
+    # Offset quote_ids per asset so quotes don't collide
+    all_assets = config.XLAYER_ASSETS
     asset_index = next((i for i, a in enumerate(all_assets) if a.name == asset), 0)
     quote_id_offset = _CHAIN_OFFSET.get(chain, 0) + asset_index * 1000
 
@@ -162,30 +149,7 @@ def to_api_payload(quote: dict[str, Any], signature: str) -> dict[str, Any]:
         "expiry": quote["expiry"],
         "is_put": quote["is_put"],
         "asset": quote.get("asset", "eth"),
-        "chain": quote.get("chain", "base"),
+        "chain": quote.get("chain", "xlayer"),
     }
 
 
-def to_solana_api_payload(
-    quote: dict[str, Any],
-    signature: bytes,
-    maker_pubkey: str,
-) -> dict[str, Any]:
-    """Convert a Solana quote dict + ed25519 signature to API format."""
-    import base58
-
-    return {
-        "otoken_address": quote["oToken"],
-        "bid_price": quote["bidPrice"],
-        "deadline": quote["deadline"],
-        "quote_id": quote["quoteId"],
-        "max_amount": quote["maxAmount"],
-        "maker_nonce": quote["makerNonce"],
-        "signature": base58.b58encode(signature).decode(),
-        "maker": maker_pubkey,
-        "strike_price": quote["strike_price"],
-        "expiry": quote["expiry"],
-        "is_put": quote["is_put"],
-        "asset": quote.get("asset", "sol"),
-        "chain": "solana",
-    }

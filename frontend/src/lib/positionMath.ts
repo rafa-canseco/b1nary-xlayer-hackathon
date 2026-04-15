@@ -12,8 +12,6 @@ export function normalizeUsdPrice(rawValue: unknown): number {
   const legacyEightDecimal = raw / 1e8;
   if (legacyEightDecimal >= 1) return legacyEightDecimal;
 
-  // Solana indexer rows can arrive already humanized (e.g. 83 instead of 83e8).
-  // Base rows remain large raw integers, so they take the 8-decimal path above.
   if (raw >= 1 && raw < 1_000_000) return raw;
 
   return legacyEightDecimal;

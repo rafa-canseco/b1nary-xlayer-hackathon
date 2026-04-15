@@ -45,7 +45,7 @@ export default function TryPageClient() {
             Pick a price. See what you&apos;d earn.
           </h1>
           <p className="text-[var(--text-secondary)] text-lg">
-            ETH is{" "}
+            OKB is{" "}
             <TickingPrice
               base={SPOT_BASE}
               className="text-[var(--text)] font-bold font-mono"

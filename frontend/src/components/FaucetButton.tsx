@@ -1,19 +1,16 @@
 "use client";
 
 import { useFaucet } from "@/hooks/useFaucet";
-import { IS_XLAYER } from "@/lib/contracts";
 import type { Address } from "viem";
 
 type Props = {
   address: Address | undefined;
-  solanaAddress: string | undefined;
   refetch: () => void;
 };
 
-export function FaucetButton({ address, solanaAddress, refetch }: Props) {
+export function FaucetButton({ address, refetch }: Props) {
   const { mint, minting, notification, error } = useFaucet({
     address,
-    solanaAddress,
     onComplete: refetch,
   });
 
@@ -24,11 +21,7 @@ export function FaucetButton({ address, solanaAddress, refetch }: Props) {
         disabled={minting}
         className="rounded-full bg-[var(--accent)] px-4 py-1.5 text-xs font-semibold text-[var(--bg)] hover:bg-[var(--accent-hover)] disabled:opacity-40 transition-colors"
       >
-        {minting
-          ? "Getting funds..."
-          : IS_XLAYER
-            ? "Get Test Tokens"
-            : "Get Test Money"}
+        {minting ? "Getting funds..." : "Get Test Tokens"}
       </button>
 
       {notification && (

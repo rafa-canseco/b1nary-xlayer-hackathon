@@ -109,12 +109,10 @@ function groupPositions(positions: Position[]): DisplayItem[] {
 }
 
 export default function PositionsPage() {
-  const { address, fundingAddress, solanaAddress, isConnected } = useWallet();
-  const { positions, loading, refresh } = usePositions(address, fundingAddress, solanaAddress);
+  const { address, fundingAddress, isConnected } = useWallet();
+  const { positions, loading, refresh } = usePositions(address, fundingAddress);
   const { activity } = useActivity(address, fundingAddress ?? undefined);
-  const { spot: ethSpot } = useSpot("eth");
-  const { spot: btcSpot } = useSpot("btc");
-  const { spot: solSpot } = useSpot("sol");
+  const { spot: okbSpot } = useSpot("okb");
   const allPositions = useOptimisticPositions(positions);
   const [yieldMetric, setYieldMetric] = useState<YieldMetric>("apr");
   const notifStatus = useNotificationStatus(address);
@@ -122,7 +120,7 @@ export default function PositionsPage() {
     summary: yieldSummary,
     positions: yieldPositions,
     history: yieldHistory,
-  } = useYield(address, solanaAddress);
+  } = useYield(address);
   const { rates: aaveRates } = useAaveRates();
 
   const yieldByVault = useMemo(() => {
@@ -195,8 +193,7 @@ export default function PositionsPage() {
         onYieldMetricChange={setYieldMetric}
         yieldAssets={yieldSummary?.assets}
         yieldPositionTotals={yieldPositions?.totals}
-        ethSpot={ethSpot}
-        btcSpot={btcSpot}
+        okbSpot={okbSpot}
       />
 
       {address && (
@@ -215,7 +212,7 @@ export default function PositionsPage() {
                   item.positions[0].asset,
                   item.positions[0].strike_price,
                 );
-                const posSpot = posAsset.slug === "btc" ? btcSpot : posAsset.slug === "sol" ? solSpot : ethSpot;
+                const posSpot = okbSpot;
                 return (
                   <RangePositionCard
                     key={item.groupId}
@@ -232,7 +229,7 @@ export default function PositionsPage() {
               }
               const pos = item.position;
               const posAsset = resolvePositionAsset(pos.asset, pos.strike_price);
-              const posSpot = posAsset.slug === "btc" ? btcSpot : posAsset.slug === "sol" ? solSpot : ethSpot;
+              const posSpot = okbSpot;
               return (
                 <PositionCard
                   key={pos.id}
@@ -265,8 +262,7 @@ export default function PositionsPage() {
       {(yieldHistory?.history?.length ?? 0) > 0 && (
         <DistributionHistory
           history={yieldHistory!.history}
-          ethSpot={ethSpot}
-          btcSpot={btcSpot}
+          okbSpot={okbSpot}
         />
       )}
 

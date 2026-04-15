@@ -1,8 +1,8 @@
 """
-EIP-712 signing and verification for MM quotes.
+EIP-712 signing and verification for MM quotes — XLayer only.
 
-Matches the BatchSettler contract's domain and Quote struct from B1N-79:
-  Domain: { name: "b1nary", version: "1", chainId, verifyingContract: BatchSettler }
+Matches the BatchSettler contract's domain and Quote struct:
+  Domain: { name: "b1nary", version: "1", chainId, verifyingContract }
   Quote:  { oToken, bidPrice, deadline, quoteId, maxAmount, makerNonce }
 """
 from eth_account import Account
@@ -42,20 +42,25 @@ def _build_quote_message(
     }
 
 
-def get_domain() -> dict:
-    """Return a fresh EIP-712 domain dict. Raises if batch_settler_address is not configured."""
-    if not settings.batch_settler_address:
+def get_xlayer_domain() -> dict:
+    """Return EIP-712 domain for XLayer BatchSettler."""
+    if not settings.xlayer_batch_settler_address:
         raise RuntimeError(
-            "batch_settler_address is not configured. "
-            "EIP-712 signatures require a valid verifyingContract. "
-            "Set BATCH_SETTLER_ADDRESS in your environment."
+            "xlayer_batch_settler_address is not configured."
         )
     return {
         "name": "b1nary",
         "version": "1",
-        "chainId": settings.chain_id,
-        "verifyingContract": Web3.to_checksum_address(settings.batch_settler_address),
+        "chainId": settings.xlayer_chain_id,
+        "verifyingContract": Web3.to_checksum_address(
+            settings.xlayer_batch_settler_address
+        ),
     }
+
+
+def get_domain_for_chain(chain: str) -> dict:
+    """Return the EIP-712 domain (always XLayer)."""
+    return get_xlayer_domain()
 
 
 def sign_quote(
@@ -68,14 +73,9 @@ def sign_quote(
     maker_nonce: int,
     domain: dict | None = None,
 ) -> str:
-    """Sign a quote with EIP-712 and return the hex signature.
-
-    Args:
-        domain: EIP-712 domain dict. If None, uses get_domain()
-            (requires settings.batch_settler_address to be set).
-    """
+    """Sign a quote with EIP-712 and return the hex signature."""
     if domain is None:
-        domain = get_domain()
+        domain = get_xlayer_domain()
     message = _build_quote_message(
         otoken, bid_price, deadline, quote_id, max_amount, maker_nonce
     )
@@ -98,14 +98,9 @@ def recover_quote_signer(
     signature: str,
     domain: dict | None = None,
 ) -> str:
-    """Recover the signer address from an EIP-712 quote signature.
-
-    Args:
-        domain: EIP-712 domain dict. If None, uses get_domain()
-            (requires settings.batch_settler_address to be set).
-    """
+    """Recover the signer address from an EIP-712 quote signature."""
     if domain is None:
-        domain = get_domain()
+        domain = get_xlayer_domain()
     message = _build_quote_message(
         otoken, bid_price, deadline, quote_id, max_amount, maker_nonce
     )
@@ -114,6 +109,7 @@ def recover_quote_signer(
         message_types=QUOTE_TYPES,
         message_data=message,
     )
-    return Account.recover_message(signable, signature=bytes.fromhex(
-        signature.removeprefix("0x")
-    ))
+    return Account.recover_message(
+        signable,
+        signature=bytes.fromhex(signature.removeprefix("0x")),
+    )

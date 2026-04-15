@@ -5,10 +5,8 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from web3 import Web3
 
 from src.config import settings
-from src.contracts.web3_client import get_margin_pool
 from src.db.database import get_client
 
 logger = logging.getLogger(__name__)
@@ -18,12 +16,11 @@ router = APIRouter()
 _ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
 _ASSET_ADDRESSES = {
-    "usdc": settings.usdc_address,
-    "eth": settings.weth_address,
-    "btc": settings.wbtc_address,
+    "usdc": settings.xlayer_usdc_address,
+    "okb": settings.wokb_address,
 }
 
-_ASSET_DECIMALS = {"usdc": 6, "eth": 18, "btc": 8}
+_ASSET_DECIMALS = {"usdc": 6, "okb": 18}
 
 
 def _human(amount: int | None, asset: str) -> float | None:
@@ -41,14 +38,8 @@ def _parse_dt(ts: str) -> datetime:
 def _get_accrued_yield() -> dict[str, int | None]:
     """Read current accrued yield from MarginPool for each asset."""
     accrued: dict[str, int | None] = {}
-    for asset_symbol, asset_addr in _ASSET_ADDRESSES.items():
-        try:
-            pool = get_margin_pool()
-            checksum = Web3.to_checksum_address(asset_addr)
-            accrued[asset_symbol] = pool.functions.getAccruedYield(checksum).call()
-        except Exception:
-            logger.exception("Failed to read accrued yield for %s", asset_symbol)
-            accrued[asset_symbol] = None
+    for asset_symbol in _ASSET_ADDRESSES:
+        accrued[asset_symbol] = None
     return accrued
 
 

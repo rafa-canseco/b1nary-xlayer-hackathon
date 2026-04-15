@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Position } from "@/lib/api";
 import { fmtUsd, fmtAsset, fmtYieldUsd, buildCalendarUrl } from "@/lib/utils";
 import { CHAIN } from "@/lib/contracts";
-import { solanaTxUrl } from "@/lib/solana";
 import { getAssetConfig } from "@/lib/assets";
 import { getPositionExpiryPrice, getPositionStrike } from "@/lib/positionMath";
 import { formatApr } from "@/lib/yield";
@@ -17,33 +16,26 @@ import type { YieldMetric } from "./YieldToggle";
 
 const BASE_EXPLORER = CHAIN.blockExplorers?.default.url ?? null;
 
-function explorerTxUrl(
-  txHash: string,
-  slug: string,
-): string | null {
-  if (slug === "sol") {
-    return solanaTxUrl(txHash);
-  }
+function explorerTxUrl(txHash: string): string | null {
   return BASE_EXPLORER ? `${BASE_EXPLORER}/tx/${txHash}` : null;
 }
 
 function positionTxUrl(
   position: Position,
   kind: "open" | "settlement" | "delivery",
-  slug: string,
 ): string | null {
   if (kind === "open") {
-    return position.tx_url ?? explorerTxUrl(position.tx_hash, slug);
+    return position.tx_url ?? explorerTxUrl(position.tx_hash);
   }
   if (kind === "settlement") {
     return position.settlement_tx_url ??
       (position.settlement_tx_hash
-        ? explorerTxUrl(position.settlement_tx_hash, slug)
+        ? explorerTxUrl(position.settlement_tx_hash)
         : null);
   }
   return position.delivery_tx_url ??
     (position.delivery_tx_hash
-      ? explorerTxUrl(position.delivery_tx_hash, slug)
+      ? explorerTxUrl(position.delivery_tx_hash)
       : null);
 }
 
@@ -230,7 +222,7 @@ export function PositionCard({ position, onSettled, spot, renderExtra, earnBase 
           {yieldInfo && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span className="font-mono">{formatApr(aaveApr)}</span> APR via {config?.chain === "solana" ? "Kamino" : "Aave"}
+              <span className="font-mono">{formatApr(aaveApr)}</span> APR via Aave
               {estYieldUsd != null && estYieldUsd > 0 && (
                 <span className="font-mono">
                   · ~${fmtYieldUsd(estYieldUsd)} accrued ({yieldDays}d)
@@ -242,7 +234,7 @@ export function PositionCard({ position, onSettled, spot, renderExtra, earnBase 
 
           <div className="flex items-center gap-4">
             {position.tx_hash && (() => {
-              const url = positionTxUrl(position, "open", assetSlug);
+              const url = positionTxUrl(position, "open");
               return url ? (
                 <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent)] hover:underline">
                   Open tx
@@ -290,11 +282,11 @@ export function PositionCard({ position, onSettled, spot, renderExtra, earnBase 
 
           <div className="flex gap-3 text-xs">
             {position.tx_hash && (() => {
-              const url = positionTxUrl(position, "open", assetSlug);
+              const url = positionTxUrl(position, "open");
               return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">Open tx</a> : null;
             })()}
             {position.settlement_tx_hash && (() => {
-              const url = positionTxUrl(position, "settlement", assetSlug);
+              const url = positionTxUrl(position, "settlement");
               return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">Settle tx</a> : null;
             })()}
           </div>
@@ -372,15 +364,15 @@ export function PositionCard({ position, onSettled, spot, renderExtra, earnBase 
 
           <div className="flex gap-3 text-xs">
             {position.tx_hash && (() => {
-              const url = positionTxUrl(position, "open", assetSlug);
+              const url = positionTxUrl(position, "open");
               return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">Open tx</a> : null;
             })()}
             {position.settlement_tx_hash && (() => {
-              const url = positionTxUrl(position, "settlement", assetSlug);
+              const url = positionTxUrl(position, "settlement");
               return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">Settle tx</a> : null;
             })()}
             {position.delivery_tx_hash && (() => {
-              const url = positionTxUrl(position, "delivery", assetSlug);
+              const url = positionTxUrl(position, "delivery");
               return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">Delivery tx</a> : null;
             })()}
           </div>

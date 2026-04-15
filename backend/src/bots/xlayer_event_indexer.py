@@ -170,6 +170,7 @@ def _build_order_event_data(ev) -> dict:
         "tx_hash": ev.transactionHash.hex(),
         "block_number": ev.blockNumber,
         "log_index": ev.logIndex,
+        "chain": "xlayer",
         "user_address": ev.args.user.lower(),
         "mm_address": ev.args.mm.lower(),
         "otoken_address": ev.args.oToken.lower(),

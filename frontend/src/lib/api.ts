@@ -23,7 +23,7 @@ export interface PriceQuote {
   max_amount_raw: number | null;
   maker_nonce: number | null;
   position_count: number;
-  chain: "base" | "solana" | "xlayer";
+  chain: "xlayer";
 }
 
 export interface Position {
@@ -244,47 +244,6 @@ export interface AnalyticsEvent {
   data?: Record<string, unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Bridge types (B1N-260 — aligned with backend relayer API)
-// ---------------------------------------------------------------------------
-
-export type BridgeJobStatus =
-  | "pending"
-  | "attesting"
-  | "minting"
-  | "trading"
-  | "completed"
-  | "mint_completed"
-  | "failed"
-  | "mint_completed_trade_failed";
-
-export interface BridgeAndTradeRequest {
-  burnTxHash: string;
-  sourceChain: "base" | "solana";
-  destChain: "base" | "solana";
-  userId: string;
-  mintRecipient: string;
-  burnAmount: string;
-  quoteId: string;
-  signedTradeTx: string | null;
-}
-
-export interface BridgeJob {
-  id: string;
-  status: BridgeJobStatus;
-  source_chain: "base" | "solana";
-  dest_chain: "base" | "solana";
-  burn_tx_hash: string;
-  burn_amount: string;
-  mint_recipient: string;
-  quote_id: string;
-  mint_tx_hash: string | null;
-  trade_tx_hash: string | null;
-  error_message: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 
 
 async function fetchAPI<T>(path: string, init?: RequestInit): Promise<T> {
@@ -389,24 +348,5 @@ export const api = {
 
   getYieldStats: () =>
     fetchAPI<YieldStats>("/yield/stats"),
-
-  // Bridge (B1N-260)
-  bridgeAndTrade: (params: BridgeAndTradeRequest) =>
-    fetchAPI<{ job_id: string; status: string }>("/api/bridge-and-trade", {
-      method: "POST",
-      body: JSON.stringify({
-        burn_tx_hash: params.burnTxHash,
-        source_chain: params.sourceChain,
-        dest_chain: params.destChain,
-        user_id: params.userId,
-        mint_recipient: params.mintRecipient,
-        burn_amount: params.burnAmount,
-        quote_id: params.quoteId,
-        signed_trade_tx: params.signedTradeTx,
-      }),
-    }),
-
-  getBridgeStatus: (jobId: string) =>
-    fetchAPI<BridgeJob>(`/api/bridge-status/${jobId}`),
 
 };

@@ -14,8 +14,7 @@ interface Props {
   onYieldMetricChange: (metric: YieldMetric) => void;
   yieldAssets?: YieldAssetSummary[];
   yieldPositionTotals?: YieldPositionTotal[];
-  ethSpot: number | undefined;
-  btcSpot: number | undefined;
+  okbSpot: number | undefined;
 }
 
 function formatUSD(n: number): string {
@@ -35,14 +34,11 @@ function capitalUsd(p: Position): number {
 
 function toUsd(
   amount: number,
-  asset: string,
-  ethSpot: number | undefined,
-  btcSpot: number | undefined,
+  _asset: string,
+  okbSpot: number | undefined,
 ): number {
-  if (asset === "usdc") return amount;
-  if (asset === "eth") return amount * (ethSpot ?? 0);
-  if (asset === "btc") return amount * (btcSpot ?? 0);
-  return 0;
+  if (_asset === "usdc") return amount;
+  return amount * (okbSpot ?? 0);
 }
 
 export function PortfolioSummary({
@@ -52,8 +48,7 @@ export function PortfolioSummary({
   onYieldMetricChange,
   yieldAssets,
   yieldPositionTotals,
-  ethSpot,
-  btcSpot,
+  okbSpot,
 }: Props) {
   const premiumEarned = positions.reduce(
     (sum, p) => sum + Number(p.net_premium) / 1e6,
@@ -92,14 +87,14 @@ export function PortfolioSummary({
   if (yieldPositionTotals) {
     for (const t of yieldPositionTotals) {
       accruingYieldUsd += toUsd(
-        t.estimated_yield, t.asset, ethSpot, btcSpot,
+        t.estimated_yield, t.asset, okbSpot,
       );
     }
   }
   let deliveredYieldUsd = 0;
   if (yieldAssets) {
     for (const a of yieldAssets) {
-      deliveredYieldUsd += toUsd(a.delivered, a.asset, ethSpot, btcSpot);
+      deliveredYieldUsd += toUsd(a.delivered, a.asset, okbSpot);
     }
   }
 

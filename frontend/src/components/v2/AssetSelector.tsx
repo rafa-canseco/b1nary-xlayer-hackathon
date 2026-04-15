@@ -21,8 +21,6 @@ import { ASSETS, ASSET_SLUGS, type AssetConfig } from "@/lib/assets";
 
 const ASSET_LOGOS: Record<string, string> = {
   eth: "/eth.png",
-  btc: "/cbbtc.webp",
-  sol: "/sol.png",
   okb: "/okb.svg",
 };
 
@@ -122,24 +120,10 @@ export function AssetSelector({
                       {asset.name}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
-                      {asset.chain === "base" && (
-                        <span className="text-[9px] font-medium text-blue-400
-                          bg-blue-500/10 px-1 py-0.5 rounded">
-                          Base
-                        </span>
-                      )}
-                      {asset.chain === "solana" && (
-                        <span className="text-[9px] font-medium text-purple-400
-                          bg-purple-500/10 px-1 py-0.5 rounded">
-                          Solana
-                        </span>
-                      )}
-                      {asset.chain === "xlayer" && (
-                        <span className="text-[9px] font-medium text-cyan-400
-                          bg-cyan-500/10 px-1 py-0.5 rounded">
-                          X Layer
-                        </span>
-                      )}
+                      <span className="text-[9px] font-medium text-cyan-400
+                        bg-cyan-500/10 px-1 py-0.5 rounded">
+                        X Layer
+                      </span>
                       {disabled && (
                         <span className="text-[10px] font-medium
                           text-[var(--text-secondary)] border

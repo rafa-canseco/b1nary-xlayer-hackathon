@@ -7,8 +7,6 @@ import time
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
-import requests
-
 from web3 import Web3
 
 from src import config, hedge_executor
@@ -86,7 +84,7 @@ def _read_usdc_balance(
     mm_address: str,
     usdc_address: str | None = None,
 ) -> float:
-    usdc = usdc_address or config.USDC_ADDRESS
+    usdc = usdc_address or config.XLAYER_USDC_ADDRESS
     addr_padded = mm_address.lower().replace("0x", "").zfill(64)
     data = _BALANCE_OF_SIG + addr_padded
     raw = w3.eth.call({"to": usdc, "data": data})
@@ -99,8 +97,8 @@ def _read_usdc_allowance(
     usdc_address: str | None = None,
     margin_pool_address: str | None = None,
 ) -> float:
-    usdc = usdc_address or config.USDC_ADDRESS
-    pool = margin_pool_address or config.MARGIN_POOL_ADDRESS
+    usdc = usdc_address or config.XLAYER_USDC_ADDRESS
+    pool = margin_pool_address or config.XLAYER_MARGIN_POOL_ADDRESS
     owner = mm_address.lower().replace("0x", "").zfill(64)
     spender = pool.lower().replace("0x", "").zfill(64)
     data = _ALLOWANCE_SIG + owner + spender
@@ -112,7 +110,7 @@ def _read_pools(
     w3: Web3,
     mm_address: str,
     *,
-    chain: str = "base",
+    chain: str = "xlayer",
 ) -> tuple[float, float, float]:
     """Read on-chain USDC and hedge pool state.
 
@@ -126,70 +124,6 @@ def _read_pools(
     usdc_balance = _read_usdc_balance(w3, mm_address, usdc_addr)
     usdc_allowance = _read_usdc_allowance(w3, mm_address, usdc_addr, pool_addr)
     usdc_available = min(usdc_balance, usdc_allowance)
-
-    if config.HEDGE_MODE == "live":
-        withdrawable = hedge_executor.get_withdrawable()
-        hedge_pool_value = hedge_executor.get_account_value()
-    else:
-        withdrawable = 0.0
-        hedge_pool_value = 0.0
-
-    return usdc_available, hedge_pool_value, withdrawable
-
-
-def _read_solana_usdc_balance(
-    rpc_url: str,
-    maker_pubkey: str,
-    usdc_mint: str,
-) -> float:
-    """Read USDC SPL token balance for a Solana wallet."""
-    resp = requests.post(
-        rpc_url,
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTokenAccountsByOwner",
-            "params": [
-                maker_pubkey,
-                {"mint": usdc_mint},
-                {"encoding": "jsonParsed"},
-            ],
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    body = resp.json()
-
-    if "error" in body:
-        rpc_err = body["error"]
-        raise RuntimeError(
-            f"Solana RPC error {rpc_err.get('code')}: {rpc_err.get('message')}"
-        )
-
-    accounts = body.get("result", {}).get("value", [])
-    if not accounts:
-        log.warning(
-            "No USDC token account for %s (mint %s)",
-            maker_pubkey,
-            usdc_mint,
-        )
-        return 0.0
-
-    info = accounts[0]["account"]["data"]["parsed"]["info"]
-    return float(info["tokenAmount"]["uiAmount"] or 0)
-
-
-def _read_pools_solana(
-    rpc_url: str,
-    maker_pubkey: str,
-    usdc_mint: str,
-) -> tuple[float, float, float]:
-    """Read Solana USDC balance and shared hedge pool state.
-
-    Returns same shape as _read_pools:
-        (usdc_available, hedge_pool_value_usd, hedge_withdrawable_usd)
-    """
-    usdc_available = _read_solana_usdc_balance(rpc_url, maker_pubkey, usdc_mint)
 
     if config.HEDGE_MODE == "live":
         withdrawable = hedge_executor.get_withdrawable()
@@ -265,7 +199,7 @@ def calculate_capacity_internal(
     tracker,
     asset_config: AssetConfig | None = None,
     *,
-    chain: str = "base",
+    chain: str = "xlayer",
 ) -> CapacityReport:
     """Calculate MM capacity for a specific asset.
 
@@ -277,18 +211,11 @@ def calculate_capacity_internal(
     is subtracted manually.
     """
     if asset_config is None:
-        asset_config = config.ASSET_MAP.get("eth", config.ASSETS[0])
+        asset_config = config.ASSET_MAP.get("okb", config.ASSETS[0])
 
-    if chain == "solana":
-        usdc_available, hedge_pool_value, withdrawable = _read_pools_solana(
-            config.SOLANA_RPC_URL,
-            mm_address,
-            config.SOLANA_USDC_MINT,
-        )
-    else:
-        usdc_available, hedge_pool_value, withdrawable = _read_pools(
-            w3, mm_address, chain=chain
-        )
+    usdc_available, hedge_pool_value, withdrawable = _read_pools(
+        w3, mm_address, chain=chain
+    )
     leverage = max(asset_config.leverage, 1)
 
     if config.HEDGE_MODE == "live":

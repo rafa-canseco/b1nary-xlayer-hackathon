@@ -3,46 +3,50 @@ import re
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-VALID_ASSETS = {"eth", "btc", "sol", "okb"}
+VALID_ASSETS = {"okb"}
 HEX_SIGNATURE_RE = re.compile(r"^0x[0-9a-fA-F]{130}$")
-VALID_CHAINS = {"base", "solana", "xlayer"}
-BASE58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
-# ed25519 signatures are 64 bytes; base58-encoded they reach up to 88 chars
-BASE58_SIG_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{80,88}$")
+VALID_CHAINS = {"xlayer"}
 
 
 class QuoteSubmission(BaseModel):
-    """A signed quote from a market maker (EIP-712 for Base, ed25519 for Solana)."""
+    """A signed quote from a market maker (EIP-712 for XLayer)."""
 
     otoken_address: str = Field(description="oToken contract address")
     bid_price: int = Field(
-        ge=1, description="Bid price in USDC smallest units (1e6 = 1 USDC)"
+        ge=1,
+        description="Bid price in USDC smallest units (1e6 = 1 USDC)",
     )
     deadline: int = Field(
-        gt=0, description="Unix timestamp after which the quote expires"
+        gt=0,
+        description="Unix timestamp after which the quote expires",
     )
-    quote_id: int = Field(ge=0, description="Unique quote identifier per MM")
+    quote_id: int = Field(
+        ge=0, description="Unique quote identifier per MM"
+    )
     max_amount: int = Field(
-        ge=1, description="Maximum oToken amount in smallest units (1e8 = 1 oToken)"
+        ge=1,
+        description="Maximum oToken amount in smallest units (1e8 = 1 oToken)",
     )
     maker_nonce: int = Field(
-        ge=0, description="MM's current makerNonce from BatchSettler"
+        ge=0,
+        description="MM's current makerNonce from BatchSettler",
     )
-    signature: str = Field(description="EIP-712 signature (hex, 0x-prefixed, 65 bytes)")
+    signature: str = Field(
+        description="EIP-712 signature (hex, 0x-prefixed, 65 bytes)",
+    )
     chain: str = Field(
-        default="base",
-        description="Chain this quote is for (base, solana)",
+        default="xlayer",
+        description="Chain this quote is for (xlayer)",
     )
-    maker: str | None = Field(
-        default=None,
-        description="Solana maker pubkey (base58). Required when chain=solana.",
+    asset: str = Field(
+        default="okb", description="Underlying asset (okb)"
     )
-    # Optional metadata for display (not part of EIP-712 struct)
-    asset: str = Field(default="eth", description="Underlying asset (eth, btc)")
     strike_price: float | None = Field(
         default=None, ge=0, description="Strike price in USD"
     )
-    expiry: int | None = Field(default=None, gt=0, description="Expiry timestamp")
+    expiry: int | None = Field(
+        default=None, gt=0, description="Expiry timestamp"
+    )
     is_put: bool | None = Field(
         default=None, description="True for put, false for call"
     )
@@ -65,37 +69,26 @@ class QuoteSubmission(BaseModel):
 
     @model_validator(mode="after")
     def validate_chain_specific_fields(self) -> "QuoteSubmission":
-        if self.chain == "solana":
-            if not self.maker:
-                raise ValueError("maker (Solana pubkey) is required when chain=solana")
-            if not BASE58_RE.match(self.maker):
-                raise ValueError("maker must be a valid base58 Solana address")
-            if not BASE58_RE.match(self.otoken_address):
-                raise ValueError("otoken_address must be base58 when chain=solana")
-            if not BASE58_SIG_RE.match(self.signature):
-                raise ValueError(
-                    "signature must be a base58-encoded ed25519 signature "
-                    "when chain=solana"
-                )
-        else:
-            self.otoken_address = self.otoken_address.lower()
-            if not ETH_ADDRESS_RE.match(self.otoken_address):
-                raise ValueError(
-                    "otoken_address must be 0x-prefixed ETH address when chain=base"
-                )
-            if not self.signature.startswith("0x"):
-                self.signature = f"0x{self.signature}"
-            if not HEX_SIGNATURE_RE.match(self.signature):
-                raise ValueError(
-                    "signature must be 0x-prefixed hex (65 bytes) when chain=base"
-                )
+        self.otoken_address = self.otoken_address.lower()
+        if not ETH_ADDRESS_RE.match(self.otoken_address):
+            raise ValueError(
+                "otoken_address must be 0x-prefixed ETH address"
+            )
+        if not self.signature.startswith("0x"):
+            self.signature = f"0x{self.signature}"
+        if not HEX_SIGNATURE_RE.match(self.signature):
+            raise ValueError(
+                "signature must be 0x-prefixed hex (65 bytes)"
+            )
         return self
 
 
 class QuoteBatchRequest(BaseModel):
     """Batch of signed quotes submitted by a market maker."""
 
-    quotes: list[QuoteSubmission] = Field(min_length=1, max_length=200)
+    quotes: list[QuoteSubmission] = Field(
+        min_length=1, max_length=200
+    )
 
 
 class QuoteBatchResponse(BaseModel):
@@ -103,14 +96,16 @@ class QuoteBatchResponse(BaseModel):
 
     accepted: int = Field(description="Number of quotes accepted")
     rejected: int = Field(description="Number of quotes rejected")
-    errors: list[str] = Field(default_factory=list, description="Rejection reasons")
+    errors: list[str] = Field(
+        default_factory=list, description="Rejection reasons"
+    )
 
 
 class FillResponse(BaseModel):
     """A single fill (OrderExecuted) for the MM."""
 
     tx_hash: str
-    chain: str = "base"
+    chain: str = "xlayer"
     tx_url: str | None = None
     block_number: int
     otoken_address: str
@@ -169,9 +164,11 @@ class OTokenInfo(BaseModel):
 class MarketDataResponse(BaseModel):
     """Market data for MM's pricing engine."""
 
-    asset: str = Field(description="Asset symbol (eth, btc, sol)")
+    asset: str = Field(description="Asset symbol (okb)")
     spot: float = Field(description="Spot price in USD")
-    iv: float = Field(description="Implied volatility (annualized decimal)")
+    iv: float = Field(
+        description="Implied volatility (annualized decimal)"
+    )
     protocol_fee_bps: int
     gas_price_gwei: float
     available_otokens: list[OTokenInfo]
@@ -188,7 +185,7 @@ class QuoteResponse(BaseModel):
     max_amount: str
     maker_nonce: int
     signature: str
-    asset: str = "eth"
+    asset: str = "okb"
     strike_price: float | None = None
     expiry: int | None = None
     is_put: bool | None = None
@@ -199,11 +196,16 @@ class QuoteResponse(BaseModel):
 class CapacityUpdateRequest(BaseModel):
     """Capacity report from a market maker."""
 
-    asset: str = Field(default="eth", description="Asset symbol (eth, btc, sol)")
-    capacity_eth: float = Field(ge=0, description="Available capacity in native units")
-    capacity_usd: float = Field(ge=0, description="Available capacity in USD")
+    asset: str = Field(
+        default="okb", description="Asset symbol (okb)"
+    )
+    capacity_eth: float = Field(
+        ge=0, description="Available capacity in native units"
+    )
+    capacity_usd: float = Field(
+        ge=0, description="Available capacity in USD"
+    )
     status: str = Field(description="active, degraded, or full")
-    # Optional internal fields (sent by internal MMs)
     premium_pool_usd: float | None = None
     hedge_pool_usd: float | None = None
     hedge_pool_withdrawable_usd: float | None = None
@@ -231,11 +233,25 @@ class CapacityUpdateRequest(BaseModel):
 class CapacityResponse(BaseModel):
     """Public capacity info exposed to the frontend."""
 
-    asset: str = Field(description="Asset symbol (eth, btc, sol)")
-    capacity: float = Field(description="Total available capacity in native units")
-    capacity_usd: float = Field(description="Total available capacity in USD")
-    market_open: bool = Field(description="Whether any MM is accepting positions")
-    market_status: str = Field(description="active, degraded, or full")
-    max_position: float = Field(description="Max single position size in native units")
-    mm_count: int = Field(description="Number of active MMs reporting")
-    updated_at: str = Field(description="Latest report timestamp (ISO 8601)")
+    asset: str = Field(description="Asset symbol (okb)")
+    capacity: float = Field(
+        description="Total available capacity in native units"
+    )
+    capacity_usd: float = Field(
+        description="Total available capacity in USD"
+    )
+    market_open: bool = Field(
+        description="Whether any MM is accepting positions"
+    )
+    market_status: str = Field(
+        description="active, degraded, or full"
+    )
+    max_position: float = Field(
+        description="Max single position size in native units"
+    )
+    mm_count: int = Field(
+        description="Number of active MMs reporting"
+    )
+    updated_at: str = Field(
+        description="Latest report timestamp (ISO 8601)"
+    )

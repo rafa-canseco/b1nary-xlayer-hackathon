@@ -5,9 +5,9 @@ import { motion } from "framer-motion";
 import { CursorGlow } from "./CursorGlow";
 
 const DEFI_SYMBOLS = [
-  "0", "1", "$", "ETH", "%", "0", "1",
+  "0", "1", "$", "OKB", "%", "0", "1",
   "$2,400", "$2,800", "0", "1", "+$42", "+$61",
-  "0", "1", "7d", "38%", "0", "1", "$", "ETH",
+  "0", "1", "7d", "38%", "0", "1", "$", "OKB",
   "BTC", "SOL", "AAPL", "TSLA", "GOLD", "SPY",
   "$68,200", "$142", "$185", "$2,650", "NVDA",
   "EUR/USD", "GBP", "JPY", "OIL", "AMZN",
