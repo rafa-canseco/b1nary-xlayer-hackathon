@@ -10,6 +10,7 @@ b1nary is a fully collateralized OKB options protocol on X Layer where both huma
 | Backend API | [backend-production-afe9.up.railway.app](https://backend-production-afe9.up.railway.app) |
 | Agent Interface | [xlayer.b1nary.app/llms.txt](https://xlayer.b1nary.app/llms.txt) |
 | API Docs | [backend-production-afe9.up.railway.app/docs](https://backend-production-afe9.up.railway.app/docs) |
+| Agentic Wallet | [`0xd98a0b4a01bb215f289edb4f224dbe392d6f9a53`](https://www.okx.com/web3/explorer/xlayer-test/address/0xd98a0b4a01bb215f289edb4f224dbe392d6f9a53) |
 | Chain | X Layer Testnet (chain ID 1952) |
 | Explorer | [OKLink X Layer Testnet](https://www.okx.com/web3/explorer/xlayer-test) |
 
