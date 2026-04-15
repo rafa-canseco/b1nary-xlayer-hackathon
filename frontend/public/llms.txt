@@ -78,24 +78,76 @@ https://github.com/rafa-canseco/b1nary-xlayer-hackathon
 
 ## Wallet Integration
 
-This deployment runs on XLayer **testnet** (chain ID 1952). There are two ways to interact:
+> **CRITICAL: Agentic Wallet vs EOA on XLayer testnet**
+>
+> This deployment runs on XLayer **testnet** (chain ID 1952). The OnchainOS
+> Agentic Wallet `--chain xlayer` maps to XLayer **mainnet** (chain ID 196),
+> NOT testnet. This means:
+>
+> - `onchainos wallet contract-call --chain xlayer` sends transactions to
+>   **mainnet 196** where these contracts do not exist.
+> - The wallet will report `txStatus: SUCCESS` but the inner call silently
+>   fails because the ERC-4337 EntryPoint succeeds (gas paid) while the
+>   target contract reverts (contract not deployed on mainnet).
+> - `eth_getTransactionReceipt` on testnet RPC will return `null` for these
+>   tx hashes because they landed on mainnet, not testnet.
+> - On-chain state (allowances, positions) will not change.
+>
+> **Use an EOA wallet for testnet. Use Agentic Wallet only on mainnet.**
 
-### Option A: Any EOA wallet (recommended for testnet)
+### Option A: EOA wallet (required for testnet)
 
-Use any EVM wallet (MetaMask, OKX Wallet, Rabby, etc.) connected to XLayer testnet. The frontend at `xlayer.b1nary.app` handles wallet connection, faucet claims, approvals, and order execution through the browser.
+Use any EVM wallet or signer connected to XLayer testnet (chain ID 1952). This is the only working path for this deployment.
 
-For agents, use any EVM-compatible signer library (ethers.js, web3.py, viem) to sign transactions directly with an EOA private key. The faucet, approve, and executeOrder flows work with standard EVM calls — no account abstraction required.
+**For humans:** Connect MetaMask, OKX Wallet, or Rabby to XLayer testnet. The frontend at `xlayer.b1nary.app` handles faucet claims, approvals, and order execution through the browser.
 
-### Option B: OKX Agentic Wallet (mainnet only)
+**For agents:** Use any EVM signer library (ethers.js, web3.py, viem, Foundry cast) with a private key. All contract interactions use standard EVM calls — no account abstraction, no bundler, no paymaster.
 
-OnchainOS Agentic Wallet currently supports XLayer **mainnet** (chain ID 196) only. Testnet (1952) is not supported for `wallet contract-call`. The Agentic Wallet can still be used for:
+```python
+# Example: approve + execute with web3.py
+from web3 import Web3
+w3 = Web3(Web3.HTTPProvider("https://testrpc.xlayer.tech/terigon"))
+# chain_id = 1952, sign with your private key
+```
 
-- `onchainos wallet status` — check wallet status
-- `onchainos wallet addresses --chain xlayer` — get your XLayer address
-- `onchainos wallet balance --chain xlayer` — check mainnet balances
-- `onchainos wallet send` — send native OKB transfers
+### Option B: Agentic Wallet (mainnet only)
 
-For full contract interaction (approve, executeOrder) via Agentic Wallet, deploy the protocol to XLayer mainnet (chain ID 196) and fund the wallet with real OKB.
+OnchainOS Agentic Wallet supports XLayer **mainnet** (chain ID 196) only. To use it:
+
+1. Deploy the protocol contracts to XLayer mainnet (requires real OKB for gas).
+2. Fund the Agentic Wallet with real OKB.
+3. Then `onchainos wallet contract-call --chain xlayer` will work correctly.
+
+The Agentic Wallet EOA address is the same across testnet and mainnet. You can use it to receive faucet tokens on testnet, but `contract-call` will always route to mainnet.
+
+### Faucet limits
+
+The faucet allows one claim per wallet address. If you need more tokens for testing, use a different wallet address. Each claim sends:
+
+- `0.01` OKB testnet gas
+- `50` MockOKB
+- `100,000` MockUSDC
+
+### Quote fields reference
+
+Each quote from `GET /prices?asset=okb` includes:
+
+| Field | Description |
+| --- | --- |
+| `otoken_address` | Address of the oToken contract |
+| `signature` | EIP-712 signature from the market maker |
+| `bid_price_raw` | Raw bid price (uint256) |
+| `deadline` | Unix timestamp — quote expires after this |
+| `quote_id` | Unique quote identifier |
+| `max_amount_raw` | Maximum oToken amount (8 decimals) |
+| `maker_nonce` | On-chain nonce for signature validation |
+| `option_type` | `"put"` or `"call"` |
+| `strike` | Strike price in USD |
+| `expiry_days` | Days until expiry |
+| `position_count` | Number of existing positions at this strike |
+| `chain` | Always `"xlayer"` |
+
+Skip entries missing `signature` or `otoken_address`.
 
 ## API Endpoints
 
@@ -116,7 +168,7 @@ Public endpoints:
 Faucet request:
 
 ```json
-{"address":"0xYourAgenticWalletAddress"}
+{"address":"0xYourWalletAddress"}
 ```
 
 Faucet response includes tx hashes for gas, MockOKB, and MockUSDC funding.
@@ -153,20 +205,7 @@ The faucet sends:
 curl "$API/prices?asset=okb"
 ```
 
-Each executable quote must include:
-
-- `otoken_address`
-- `signature`
-- `bid_price_raw`
-- `deadline`
-- `quote_id`
-- `max_amount_raw`
-- `maker_nonce`
-- `option_type`
-- `strike`
-- `chain: "xlayer"`
-
-Skip entries missing `signature` or `otoken_address`.
+See the "Quote fields reference" table above for field descriptions. Skip entries missing `signature` or `otoken_address`.
 
 ### 4. Approve collateral
 
@@ -186,11 +225,7 @@ Spender:
 BatchSettler = 0x6aea5B95d64962E7F001218159cB5fb11712E8B1
 ```
 
-Use max approval for demo wallets only:
-
-```text
-amount = 2^256 - 1
-```
+For testnet demo wallets, you can use max approval (`2^256 - 1`) or approve the exact collateral amount needed. If your agent policy prohibits unlimited approvals, compute the required collateral from the Collateral Math section below and approve that exact amount.
 
 Using any EVM library (e.g. cast):
 
