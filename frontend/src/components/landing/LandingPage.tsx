@@ -11,11 +11,11 @@ const WORDMARK_FONT = "'Fira Code', monospace";
 const TARGET = "b1nary";
 const BINARY_CHARS = "01";
 
-const FALLBACK_SPOT = 2621;
+const FALLBACK_SPOT = 85;
 
 function deriveStrikes(spot: number) {
-  const buy = Math.round((spot * 0.92) / 100) * 100;
-  const sell = Math.round((spot * 1.08) / 100) * 100;
+  const buy = Math.round(spot * 0.92);
+  const sell = Math.round(spot * 1.08);
   return { buyStrike: buy, sellStrike: sell };
 }
 
@@ -336,7 +336,7 @@ function SideToggle({ side, onSideChange }: { side: "buy" | "sell"; onSideChange
             : "text-[var(--text-secondary)] hover:text-[var(--text)]"
         }`}
       >
-        I have ETH
+        I have OKB
       </button>
     </div>
   );
@@ -384,7 +384,7 @@ function MechanismSection({
           >
             <div className="flex items-center gap-6 flex-wrap">
               <p className="text-[var(--text-secondary)] text-lg">
-                ETH is{" "}
+                OKB is{" "}
                 {priceReady ? (
                   <span className="text-[var(--text)] font-bold font-mono">${spot.toLocaleString()}</span>
                 ) : (
@@ -403,7 +403,7 @@ function MechanismSection({
                 transition={{ duration: 0.3 }}
                 className="text-xl text-[var(--text-secondary)]"
               >
-                You set: <span className="text-[var(--text)]">{side === "buy" ? "Buy" : "Sell"} ETH at ${strike.toLocaleString()}</span>
+                You set: <span className="text-[var(--text)]">{side === "buy" ? "Buy" : "Sell"} OKB at ${strike.toLocaleString()}</span>
                 <br />
                 You receive: <span className="font-semibold text-[var(--accent)]"><AnimatedPremium value={premium} /></span> upfront
               </motion.p>
@@ -451,8 +451,8 @@ function MechanismSection({
               <p className="text-[var(--text-secondary)] text-xs uppercase tracking-wider">Price {side === "buy" ? "drops" : "rises"}</p>
               <p className="text-xl text-[var(--text)] font-light">
                 {side === "buy"
-                  ? `You buy ETH at $${strike.toLocaleString()}.`
-                  : `You sell ETH at $${strike.toLocaleString()}.`}
+                  ? `You buy OKB at $${strike.toLocaleString()}.`
+                  : `You sell OKB at $${strike.toLocaleString()}.`}
               </p>
               <p className="text-[var(--text-secondary)]">
                 + keep the <span className="font-semibold text-[var(--accent)]">${premium}</span>
@@ -466,7 +466,7 @@ function MechanismSection({
               <p className="text-xl text-[var(--text)] font-light">
                 {side === "buy"
                   ? `Your $${strike.toLocaleString()} comes back.`
-                  : "Your ETH comes back."}
+                  : "Your OKB comes back."}
               </p>
               <p className="text-[var(--text-secondary)]">
                 + keep the <span className="font-semibold text-[var(--accent)]">${premium}</span>
@@ -509,29 +509,29 @@ function buildLoopFrames(
   const sp = sellPremium;
 
   if (side === "buy") return [
-    { text: `Buy ETH @ ${bs}` },
+    { text: `Buy OKB @ ${bs}` },
     { text: `Earn $${bp} ✓`, accent: true, counter: bp },
     { text: `Price didn't hit.\n${bs} back.`, secondary: true },
     { text: "Earn again →", accent: true, pulse: true },
-    { text: `Buy ETH @ ${bs}` },
+    { text: `Buy OKB @ ${bs}` },
     { text: `Earn $${bp} ✓`, accent: true, counter: bp },
-    { text: `Price hit.\nYou bought ETH @ ${bs}.`, secondary: true },
-    { text: "You now have ETH.\nSet a sell price.", slow: true },
-    { text: `Sell ETH @ ${ss}` },
+    { text: `Price hit.\nYou bought OKB @ ${bs}.`, secondary: true },
+    { text: "You now have OKB.\nSet a sell price.", slow: true },
+    { text: `Sell OKB @ ${ss}` },
     { text: `Earn $${sp} ✓`, accent: true, counter: sp },
     { text: "Earn again →", accent: true, pulse: true },
   ];
 
   return [
-    { text: `Sell ETH @ ${ss}` },
+    { text: `Sell OKB @ ${ss}` },
     { text: `Earn $${sp} ✓`, accent: true, counter: sp },
-    { text: "Price didn't hit.\nYour ETH comes back.", secondary: true },
+    { text: "Price didn't hit.\nYour OKB comes back.", secondary: true },
     { text: "Earn again →", accent: true, pulse: true },
-    { text: `Sell ETH @ ${ss}` },
+    { text: `Sell OKB @ ${ss}` },
     { text: `Earn $${sp} ✓`, accent: true, counter: sp },
-    { text: `Price hit.\nYou sold ETH @ ${ss}.`, secondary: true },
+    { text: `Price hit.\nYou sold OKB @ ${ss}.`, secondary: true },
     { text: "You now have dollars.\nSet a buy price.", slow: true },
-    { text: `Buy ETH @ ${bs}` },
+    { text: `Buy OKB @ ${bs}` },
     { text: `Earn $${bp} ✓`, accent: true, counter: bp },
     { text: "Earn again →", accent: true, pulse: true },
   ];
@@ -657,7 +657,7 @@ const LoopSection = memo(function LoopSection({
 
 const COMPARISONS = [
   { name: "Savings account", apr: "~4%", pros: ["Safe"], cons: ["Not crypto"] },
-  { name: "Staking ETH", apr: "~3.5%", pros: ["Passive"], cons: ["Low income"] },
+  { name: "Staking OKB", apr: "~3.5%", pros: ["Passive"], cons: ["Low income"] },
   { name: "Lending (Aave)", apr: "~2%", pros: ["DeFi"], cons: ["Lower income"] },
 ];
 
@@ -811,7 +811,7 @@ function EngineSection() {
 /* ── Section 8: Social Proof ── */
 
 const STATS = [
-  { label: "Built on", value: "Base" },
+  { label: "Built on", value: "X Layer" },
   { label: "Backed", value: "100%" },
   { label: "Margin calls", value: "None" },
 ];
@@ -853,7 +853,7 @@ const SocialProofSection = memo(function SocialProofSection() {
           transition={{ duration: 0.5, delay: 0.7 }}
           className="text-center text-[var(--text-secondary)] opacity-50 text-sm"
         >
-          Open source · Audited · Live on Base
+          Open source · Live on X Layer
         </motion.p>
       </div>
     </section>
@@ -899,7 +899,7 @@ function AgentNativeSection() {
               transition={{ duration: 0.4, delay: 0.2 }}
             >
               <p className="text-[var(--text-secondary)]">
-                <span className="text-[var(--accent)]">$</span> human clicks &quot;Sell ETH at $2,800&quot;
+                <span className="text-[var(--accent)]">$</span> human clicks &quot;Sell OKB at $85&quot;
               </p>
               <p className="text-[var(--accent)] mt-1">&gt; +$62 earned</p>
             </motion.div>
@@ -917,7 +917,7 @@ function AgentNativeSection() {
               transition={{ duration: 0.4, delay: 0.6 }}
             >
               <p className="text-[var(--text-secondary)]">
-                <span className="text-[var(--accent)]">$</span> agent POST /execute &#123;asset: &quot;ETH&quot;, price: 2800, side: &quot;sell&quot;&#125;
+                <span className="text-[var(--accent)]">$</span> agent POST /execute &#123;asset: &quot;OKB&quot;, price: 85, side: &quot;sell&quot;&#125;
               </p>
               <p className="text-[var(--accent)] mt-1">&gt; +$62 earned</p>
             </motion.div>
@@ -935,7 +935,7 @@ function AgentNativeSection() {
               transition={{ duration: 0.4, delay: 1.0 }}
             >
               <p className="text-[var(--text-secondary)]">
-                <span className="text-[var(--accent)]">$</span> agent POST /provide &#123;asset: &quot;ETH&quot;, quotes: [...]&#125;
+                <span className="text-[var(--accent)]">$</span> agent POST /provide &#123;asset: &quot;OKB&quot;, quotes: [...]&#125;
               </p>
               <p className="text-[var(--accent)] mt-1">&gt; Liquidity published. Earning fees on every trade.</p>
             </motion.div>
@@ -1035,7 +1035,7 @@ function AiCtaSection() {
 export function LandingPage() {
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const { prices, loading: priceLoading } = usePrices(undefined, 30_000);
-  const { spot: liveSpot, loading: spotLoading } = useSpot("eth", 30_000);
+  const { spot: liveSpot, loading: spotLoading } = useSpot("okb", 30_000);
   const quoteSpot = prices[0]?.spot;
   const spot = liveSpot ? Math.round(liveSpot) : quoteSpot ? Math.round(quoteSpot) : FALLBACK_SPOT;
   const priceReady = spot !== FALLBACK_SPOT || (!priceLoading && !spotLoading);

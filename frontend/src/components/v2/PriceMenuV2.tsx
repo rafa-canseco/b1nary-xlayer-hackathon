@@ -7,15 +7,13 @@ import { useSpot } from "@/hooks/useSpot";
 import { useCapacity } from "@/hooks/useCapacity";
 import { useWallet } from "@/hooks/useWallet";
 import { useBalances } from "@/hooks/useBalances";
-import { useSolanaBalance } from "@/hooks/useSolanaBalance";
 import { AcceptModal } from "../AcceptModal";
 import { LivePrice } from "../LivePrice";
 import { HowItWorksDrawer } from "../HowItWorksDrawer";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { OutcomeCards } from "./OutcomeCards";
-import { CHAIN, IS_XLAYER } from "@/lib/contracts";
-import { SOLANA_NATIVE_RESERVE_LAMPORTS, solanaTxUrl } from "@/lib/solana";
+import { CHAIN } from "@/lib/contracts";
 import { fmtUsd, floorTo, buildTweetUrl } from "@/lib/utils";
 import { formatApr } from "@/lib/yield";
 import { useAaveRates } from "@/hooks/useAaveRates";
@@ -54,18 +52,6 @@ function daysUntil(expiryDate: string): number {
 
 const PERCENT_SHORTCUTS = [25, 50, 75, 100] as const;
 const MIN_DISPLAY_APR = 3;
-const RAW_COLLATERAL_BUFFER = BigInt(1);
-
-function formatSolRawAmount(rawLamports: bigint, decimals = 8): string {
-  const divisor = BigInt(10) ** BigInt(9 - decimals);
-  const displayUnits = rawLamports / divisor;
-  const scale = BigInt(10) ** BigInt(decimals);
-  const whole = displayUnits / scale;
-  const fraction = (displayUnits % scale).toString().padStart(decimals, "0");
-  const trimmed = fraction.replace(/0+$/, "");
-  return trimmed ? `${whole}.${trimmed}` : whole.toString();
-}
-
 function fmtYield(apr: number, roi: number, metric: YieldMetric): string {
   return metric === "apr"
     ? `${Math.round(apr)}% APR`
@@ -179,15 +165,8 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
   const { spot: spotFromEndpoint } = useSpot(asset.slug, 5_000);
   const spot = spotFromEndpoint ?? prices[0]?.spot;
   const { capacity } = useCapacity(asset.slug);
-  const { address, solanaAddress, isConnected } = useWallet();
+  const { address, isConnected } = useWallet();
   const { usd, eth, weth, wbtc, okb } = useBalances(address);
-  const {
-    solanaUsdc,
-    solanaWsolRaw,
-    solanaWsol,
-    solanaSolRaw,
-    solanaSol,
-  } = useSolanaBalance(solanaAddress);
   const searchParams = useSearchParams();
   const sideParam = searchParams.get("side");
   const amountParam = searchParams.get("amount");
@@ -211,20 +190,10 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
 
   const isBuy = side === "buy";
   const isBtc = asset.slug === "btc";
-  const isSol = asset.slug === "sol";
   const isOkb = asset.slug === "okb";
-  const wrappableSolRaw =
-    solanaSolRaw > SOLANA_NATIVE_RESERVE_LAMPORTS
-      ? solanaSolRaw - SOLANA_NATIVE_RESERVE_LAMPORTS
-      : BigInt(0);
-  const solMaxByBalanceRaw =
-    solanaWsolRaw + wrappableSolRaw > RAW_COLLATERAL_BUFFER
-      ? solanaWsolRaw + wrappableSolRaw - RAW_COLLATERAL_BUFFER
-      : BigInt(0);
-  const solCollateralBalance = Number(solanaWsolRaw + wrappableSolRaw) / 1e9;
   const walletBalance = isBuy
-    ? IS_XLAYER ? usd : usd + solanaUsdc
-    : isOkb ? okb : isSol ? solCollateralBalance : isBtc ? wbtc : eth + weth;
+    ? usd
+    : isOkb ? okb : isBtc ? wbtc : eth + weth;
 
   const expiries = useMemo(() => {
     const seen = new Set<string>();
@@ -311,14 +280,6 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
   }
 
   function handlePercentShortcut(pct: number) {
-    if (!isBuy && isSol) {
-      const capRaw = BigInt(Math.floor(capEth * 1e9));
-      const rawAvailable = solMaxByBalanceRaw < capRaw ? solMaxByBalanceRaw : capRaw;
-      const raw = (rawAvailable * BigInt(pct)) / BigInt(100);
-      setAmountStr(formatSolRawAmount(raw));
-      return;
-    }
-
     const raw = walletBalance * (pct / 100);
     if (isBuy) {
       const truncated = floorTo(raw, 2);
@@ -355,9 +316,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
     const commitLabel = abuy ? `$${aa.toLocaleString()}` : `${aa} ${asset.symbol}`;
     const apr = computeAPR(aq.premium, aq.strike, aq.expiry_days);
     const roi = computeROI(aq.premium, aq.strike);
-    const explorerUrl = asset.chain === "solana"
-      ? null
-      : CHAIN.blockExplorers?.default.url;
+    const explorerUrl = CHAIN.blockExplorers?.default.url;
 
     return (
       <div className="text-center space-y-5 py-10 animate-fade-in-up">
@@ -375,13 +334,9 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
           <p>{commitLabel} committed for {aq.expiry_days} days</p>
           <p>{abuy ? "Buy" : "Sell"} {asset.symbol} at ${aq.strike.toLocaleString()}/{asset.symbol}</p>
         </div>
-        {aTxHash && (
+        {aTxHash && explorerUrl && (
           <a
-            href={
-              asset.chain === "solana"
-                ? solanaTxUrl(aTxHash)
-                : `${explorerUrl}/tx/${aTxHash}`
-            }
+            href={`${explorerUrl}/tx/${aTxHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block text-sm text-[var(--accent)] hover:underline"
@@ -420,9 +375,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
   }
 
   if (rangeAccepted) {
-    const explorerUrl = asset.chain === "solana"
-      ? null
-      : CHAIN.blockExplorers?.default.url;
+    const explorerUrl2 = CHAIN.blockExplorers?.default.url;
     return (
       <div className="text-center space-y-5 py-10 animate-fade-in-up">
         <div>
@@ -443,15 +396,11 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
           <p>Range: ${rangeAccepted.putStrike.toLocaleString()} – ${rangeAccepted.callStrike.toLocaleString()}</p>
           <p>${rangeAccepted.amount.toLocaleString()} committed for {rangeAccepted.expiryDays} days</p>
         </div>
-        {(rangeAccepted.putTxHash || rangeAccepted.callTxHash) && (
+        {(rangeAccepted.putTxHash || rangeAccepted.callTxHash) && explorerUrl2 && (
           <div className="flex justify-center gap-3 text-sm">
             {rangeAccepted.putTxHash && (
               <a
-                href={
-                  asset.chain === "solana"
-                    ? solanaTxUrl(rangeAccepted.putTxHash)
-                    : `${explorerUrl}/tx/${rangeAccepted.putTxHash}`
-                }
+                href={`${explorerUrl2}/tx/${rangeAccepted.putTxHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--accent)] hover:underline"
@@ -461,11 +410,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
             )}
             {rangeAccepted.callTxHash && (
               <a
-                href={
-                  asset.chain === "solana"
-                    ? solanaTxUrl(rangeAccepted.callTxHash)
-                    : `${explorerUrl}/tx/${rangeAccepted.callTxHash}`
-                }
+                href={`${explorerUrl2}/tx/${rangeAccepted.callTxHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--accent)] hover:underline"
@@ -606,7 +551,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
                   Price hits? You buy. Doesn&apos;t? Your dollars come back. You keep the payment either way.
                 </p>
                 <p className="text-xs text-amber-400/80 mt-1">
-                  Your USDC also earns {formatApr(aaveRates.usdc ?? 0)} APR via {asset.chain === "solana" ? "Kamino" : "Aave"} while committed
+                  Your USDC also earns {formatApr(aaveRates.usdc ?? 0)} APR via Aave while committed
                 </p>
               </>
             )}
@@ -620,7 +565,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
                   Price hits? You sell at your price. Doesn&apos;t? Your {asset.symbol} comes back. You keep the payment either way.
                 </p>
                 <p className="text-xs text-amber-400/80 mt-1">
-                  Your {asset.symbol} also earns {formatApr(aaveRates[asset.slug] ?? 0)} APR via {asset.chain === "solana" ? "Kamino" : "Aave"} while committed
+                  Your {asset.symbol} also earns {formatApr(aaveRates[asset.slug] ?? 0)} APR via Aave while committed
                 </p>
               </>
             )}
@@ -634,7 +579,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
                   If {asset.symbol} stays in your range, everything comes back. You keep both payments.
                 </p>
                 <p className="text-xs text-amber-400/80 mt-1">
-                  Collateral earns {asset.chain === "solana" ? "Kamino" : "Aave"} yield: {formatApr(aaveRates.usdc ?? 0)} on USDC · {formatApr(aaveRates[asset.slug] ?? 0)} on {asset.symbol}
+                  Collateral earns Aave yield: {formatApr(aaveRates.usdc ?? 0)} on USDC · {formatApr(aaveRates[asset.slug] ?? 0)} on {asset.symbol}
                 </p>
               </>
             )}
@@ -671,7 +616,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
           prices={prices}
           activeExpiry={activeExpiry}
           spot={spot}
-          walletBalance={IS_XLAYER ? usd : usd + solanaUsdc}
+          walletBalance={usd}
           amountStr={amountStr}
           onAmountChange={setAmountStr}
           onAccepted={setRangeAccepted}
@@ -691,7 +636,7 @@ export function PriceMenuV2({ asset }: { asset: AssetConfig }) {
             <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 focus-within:border-[var(--accent)] transition-colors duration-200">
               <div className="flex items-center gap-1.5 shrink-0">
                 <img
-                  src={isBuy ? "/usdc.svg" : isOkb ? "/okb.svg" : `/${isSol ? "sol.png" : asset.slug === "btc" ? "cbbtc.webp" : "eth.png"}`}
+                  src={isBuy ? "/usdc.svg" : isOkb ? "/okb.svg" : `/${asset.slug === "btc" ? "cbbtc.webp" : "eth.png"}`}
                   alt={isBuy ? "USDC" : asset.symbol}
                   className="w-5 h-5 rounded-full"
                 />

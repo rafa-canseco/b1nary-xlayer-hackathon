@@ -140,7 +140,7 @@ export function PayoffDiagram({
           fontSize={9}
           fontWeight={500}
         >
-          {side === "buy" ? "Buy ETH" : "Sell ETH"}
+          {side === "buy" ? "Buy OKB" : "Sell OKB"}
         </text>
         <text
           x={(Math.min(redLeft, redRight) + Math.max(redLeft, redRight)) / 2}

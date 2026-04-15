@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Position } from "@/lib/api";
 import { fmtUsd, fmtYieldUsd, buildCalendarUrl } from "@/lib/utils";
 import { CHAIN } from "@/lib/contracts";
-import { solanaTxUrl } from "@/lib/solana";
 import { getAssetConfig } from "@/lib/assets";
 import { getPositionStrike } from "@/lib/positionMath";
 import { YieldExplainer } from "./yield/YieldExplainer";
@@ -14,15 +13,12 @@ import type { YieldMetric } from "./YieldToggle";
 
 const EXPLORER = CHAIN.blockExplorers?.default.url ?? null;
 
-function explorerTxUrl(txHash: string, slug: string): string | null {
-  if (slug === "sol") {
-    return solanaTxUrl(txHash);
-  }
+function explorerTxUrl(txHash: string): string | null {
   return EXPLORER ? `${EXPLORER}/tx/${txHash}` : null;
 }
 
-function positionOpenTxUrl(position: Position, slug: string): string | null {
-  return position.tx_url ?? explorerTxUrl(position.tx_hash, slug);
+function positionOpenTxUrl(position: Position): string | null {
+  return position.tx_url ?? explorerTxUrl(position.tx_hash);
 }
 
 interface YieldInfo {
@@ -235,9 +231,9 @@ export function RangePositionCard({
               </div>
               {(putLeg.tx_hash || callLeg.tx_hash) && (
                 <div className="flex gap-3">
-                  {putLeg.tx_hash && positionOpenTxUrl(putLeg, assetSlug) && (
+                  {putLeg.tx_hash && positionOpenTxUrl(putLeg) && (
                     <a
-                      href={positionOpenTxUrl(putLeg, assetSlug)!}
+                      href={positionOpenTxUrl(putLeg)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[var(--accent)] hover:underline"
@@ -245,9 +241,9 @@ export function RangePositionCard({
                       Lower tx
                     </a>
                   )}
-                  {callLeg.tx_hash && positionOpenTxUrl(callLeg, assetSlug) && (
+                  {callLeg.tx_hash && positionOpenTxUrl(callLeg) && (
                     <a
-                      href={positionOpenTxUrl(callLeg, assetSlug)!}
+                      href={positionOpenTxUrl(callLeg)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[var(--accent)] hover:underline"
@@ -369,11 +365,11 @@ export function RangePositionCard({
                   ${fmtUsd(callPremium)}
                 </span>
               </div>
-              {(positionOpenTxUrl(putLeg, assetSlug) || positionOpenTxUrl(callLeg, assetSlug)) && (
+              {(positionOpenTxUrl(putLeg) || positionOpenTxUrl(callLeg)) && (
                 <div className="flex gap-3">
-                  {positionOpenTxUrl(putLeg, assetSlug) && (
+                  {positionOpenTxUrl(putLeg) && (
                     <a
-                      href={positionOpenTxUrl(putLeg, assetSlug)!}
+                      href={positionOpenTxUrl(putLeg)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[var(--accent)] hover:underline"
@@ -381,9 +377,9 @@ export function RangePositionCard({
                       Lower tx
                     </a>
                   )}
-                  {positionOpenTxUrl(callLeg, assetSlug) && (
+                  {positionOpenTxUrl(callLeg) && (
                     <a
-                      href={positionOpenTxUrl(callLeg, assetSlug)!}
+                      href={positionOpenTxUrl(callLeg)!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[var(--accent)] hover:underline"

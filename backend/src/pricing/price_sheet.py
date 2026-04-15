@@ -53,7 +53,7 @@ def generate_strikes(
 
 def generate_otoken_specs(
     spot: float,
-    asset: Asset = Asset.ETH,
+    asset: Asset = Asset.OKB,
     expiry_timestamps: list[int] | None = None,
     num_strikes: int | None = None,
 ) -> list[OTokenSpec]:

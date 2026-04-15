@@ -13,7 +13,7 @@ from src.models.simulate import (
     UserWeeklyResult,
     WeeklyReport,
 )
-from src.pricing.deribit import get_eth_iv
+from src.pricing.deribit import get_okb_iv
 from src.pricing.historical import get_eth_price_history
 from src.pricing.simulator import simulate_pnl
 
@@ -67,7 +67,7 @@ async def simulate(
     try:
         history, iv = await asyncio.gather(
             get_eth_price_history(),
-            get_eth_iv(),
+            get_okb_iv(),
         )
     except Exception:
         logger.exception("Failed to fetch market data for simulation")

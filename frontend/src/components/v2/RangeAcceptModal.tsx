@@ -31,7 +31,6 @@ import {
 import { encodeSwapExactOutput } from "@/lib/swap";
 import { getAssetConfig } from "@/lib/assets";
 import { DepositModal } from "@/components/DepositModal";
-import { solanaTxUrl } from "@/lib/solana";
 
 const DEADLINE_BUFFER_S = 60;
 
@@ -83,7 +82,7 @@ export function RangeAcceptModal({
   totalPremium,
   spotPrice,
   assetSymbol = "ETH",
-  assetSlug = "eth",
+  assetSlug = "okb",
   onClose,
   onAccepted,
 }: Props) {
@@ -95,17 +94,17 @@ export function RangeAcceptModal({
   const [error, setError] = useState<string | null>(null);
   const [didSwap, setDidSwap] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
-  const [depositToken, setDepositToken] = useState<"usdc" | "eth" | "btc" | "sol">("usdc");
+  const [depositToken, setDepositToken] = useState<"usdc" | "okb">("usdc");
 
   const loading = step === "swapping" || step === "executing-put" || step === "executing-call";
   const done = step === "confirmed";
   const explorerUrl = CHAIN.blockExplorers?.default.url ?? null;
   const txUrl = (hash: string) =>
-    assetSlug === "sol" ? solanaTxUrl(hash) : `${explorerUrl}/tx/${hash}`;
+    `${explorerUrl}/tx/${hash}`;
 
   const stepLabels: Record<RangeStep, string> = {
     "idle": "Accept range",
-    "swapping": "Swapping USDC to ETH...",
+    "swapping": `Swapping USDC to ${assetSymbol}...`,
     "executing-put": "Executing lower side...",
     "executing-call": "Executing upper side...",
     "confirmed": "Done",
@@ -146,7 +145,7 @@ export function RangeAcceptModal({
       const callCol = computeCollateral(false, callAmountEth, callQuote.strike, assetSlug);
 
       // Asset-aware call side: ETH uses WETH (18 dec) + native, BTC uses cbBTC (8 dec)
-      const isBtc = assetSlug === "btc";
+      const isBtc = false;
       const callToken = callCol.collateralAsset; // WETH or cbBTC
       const callDecimals = isBtc ? 8 : 18;
 
@@ -213,7 +212,7 @@ export function RangeAcceptModal({
         await publicClient.waitForTransactionReceipt({ hash: swapHash });
         setDidSwap(true);
       } else if (callAvailable < callNeeded) {
-        setDepositToken(isBtc ? "btc" : assetSlug === "sol" ? "sol" : "eth");
+        setDepositToken("okb");
         setShowDeposit(true);
         return;
       } else {
@@ -374,7 +373,7 @@ export function RangeAcceptModal({
         setError("Swap failed. No funds were moved. Please try again.");
         setStep("idle");
       } else if (lastStep === "executing-put" && didSwap) {
-        setError("Lower side failed, but the swap already completed. Your ETH is in your wallet. Please try again.");
+        setError(`Lower side failed, but the swap already completed. Your ${assetSymbol} is in your wallet. Please try again.`);
         setStep("idle");
       } else if (lastStep === "executing-put") {
         setError("Lower side failed. No funds were moved. Please try again.");
@@ -430,7 +429,7 @@ export function RangeAcceptModal({
         </div>
 
         <p className="text-xs text-amber-400/80 flex items-center gap-1.5">
-          Collateral earns {assetSlug === "sol" ? "Kamino" : "Aave"} yield: {formatApr(aaveRates.usdc ?? 0)} on USDC · {formatApr(aaveRates[assetSlug] ?? 0)} on {assetSymbol}
+          Collateral earns Aave yield: {formatApr(aaveRates.usdc ?? 0)} on USDC · {formatApr(aaveRates[assetSlug] ?? 0)} on {assetSymbol}
           <YieldExplainer />
         </p>
 
@@ -486,7 +485,7 @@ export function RangeAcceptModal({
         {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
         {/* Tx links */}
-        {(putTxHash || callTxHash) && (assetSlug === "sol" || explorerUrl) && (
+        {(putTxHash || callTxHash) && explorerUrl && (
           <div className="flex gap-3 text-xs">
             {putTxHash && (
               <a href={txUrl(putTxHash)} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">

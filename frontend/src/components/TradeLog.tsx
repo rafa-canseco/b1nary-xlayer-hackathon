@@ -7,33 +7,30 @@ import { fmtUsd, fmtAsset } from "@/lib/utils";
 import { CHAIN } from "@/lib/contracts";
 import { resolvePositionAsset } from "@/lib/assets";
 import { getPositionExpiryPrice, getPositionStrike } from "@/lib/positionMath";
-import { solanaTxUrl } from "@/lib/solana";
 
 const EXPLORER_BASE = CHAIN.blockExplorers?.default.url ?? null;
 const DEFAULT_VISIBLE = 5;
 
-function explorerTxUrl(txHash: string, slug: string): string | null {
-  if (slug === "sol") return solanaTxUrl(txHash);
+function explorerTxUrl(txHash: string): string | null {
   return EXPLORER_BASE ? `${EXPLORER_BASE}/tx/${txHash}` : null;
 }
 
 function positionTxUrl(
   position: Position,
   kind: "open" | "settlement" | "delivery",
-  slug: string,
 ): string | null {
   if (kind === "open") {
-    return position.tx_url ?? explorerTxUrl(position.tx_hash, slug);
+    return position.tx_url ?? explorerTxUrl(position.tx_hash);
   }
   if (kind === "settlement") {
     return position.settlement_tx_url ??
       (position.settlement_tx_hash
-        ? explorerTxUrl(position.settlement_tx_hash, slug)
+        ? explorerTxUrl(position.settlement_tx_hash)
         : null);
   }
   return position.delivery_tx_url ??
     (position.delivery_tx_hash
-      ? explorerTxUrl(position.delivery_tx_hash, slug)
+      ? explorerTxUrl(position.delivery_tx_hash)
       : null);
 }
 
@@ -234,22 +231,22 @@ function RangeTradeRow({
               {expiryPriceUsd != null && (
                 <p>Maturity price: ${expiryPriceUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}/{assetSymbol}</p>
               )}
-              {(positionTxUrl(putLeg, "open", posAsset.slug) ||
-                positionTxUrl(callLeg, "open", posAsset.slug) ||
-                positionTxUrl(putLeg, "settlement", posAsset.slug) ||
-                positionTxUrl(callLeg, "settlement", posAsset.slug)) && (
+              {(positionTxUrl(putLeg, "open") ||
+                positionTxUrl(callLeg, "open") ||
+                positionTxUrl(putLeg, "settlement") ||
+                positionTxUrl(callLeg, "settlement")) && (
                 <div className="flex gap-3">
-                  {positionTxUrl(putLeg, "open", posAsset.slug) && (
-                    <a href={positionTxUrl(putLeg, "open", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Lower tx</a>
+                  {positionTxUrl(putLeg, "open") && (
+                    <a href={positionTxUrl(putLeg, "open")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Lower tx</a>
                   )}
-                  {positionTxUrl(callLeg, "open", posAsset.slug) && (
-                    <a href={positionTxUrl(callLeg, "open", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Upper tx</a>
+                  {positionTxUrl(callLeg, "open") && (
+                    <a href={positionTxUrl(callLeg, "open")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Upper tx</a>
                   )}
-                  {positionTxUrl(putLeg, "settlement", posAsset.slug) && (
-                    <a href={positionTxUrl(putLeg, "settlement", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Lower settle tx</a>
+                  {positionTxUrl(putLeg, "settlement") && (
+                    <a href={positionTxUrl(putLeg, "settlement")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Lower settle tx</a>
                   )}
-                  {positionTxUrl(callLeg, "settlement", posAsset.slug) && (
-                    <a href={positionTxUrl(callLeg, "settlement", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Upper settle tx</a>
+                  {positionTxUrl(callLeg, "settlement") && (
+                    <a href={positionTxUrl(callLeg, "settlement")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">Upper settle tx</a>
                   )}
                 </div>
               )}
@@ -404,22 +401,22 @@ function TradeRow({
                 </>
               )}
 
-              {(positionTxUrl(p, "open", posAsset.slug) ||
-                positionTxUrl(p, "settlement", posAsset.slug) ||
-                positionTxUrl(p, "delivery", posAsset.slug)) && (
+              {(positionTxUrl(p, "open") ||
+                positionTxUrl(p, "settlement") ||
+                positionTxUrl(p, "delivery")) && (
                 <div className="flex gap-3">
-                  {positionTxUrl(p, "open", posAsset.slug) && (
-                    <a href={positionTxUrl(p, "open", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
+                  {positionTxUrl(p, "open") && (
+                    <a href={positionTxUrl(p, "open")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
                       Open tx
                     </a>
                   )}
-                  {positionTxUrl(p, "settlement", posAsset.slug) && (
-                    <a href={positionTxUrl(p, "settlement", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
+                  {positionTxUrl(p, "settlement") && (
+                    <a href={positionTxUrl(p, "settlement")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
                       Settle tx
                     </a>
                   )}
-                  {positionTxUrl(p, "delivery", posAsset.slug) && (
-                    <a href={positionTxUrl(p, "delivery", posAsset.slug)!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
+                  {positionTxUrl(p, "delivery") && (
+                    <a href={positionTxUrl(p, "delivery")!} target="_blank" rel="noopener noreferrer" className="font-mono text-[var(--accent)] hover:underline">
                       Delivery tx
                     </a>
                   )}

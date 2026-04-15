@@ -1,5 +1,4 @@
 import { type Address, type Chain, createPublicClient, http } from "viem";
-import { base, baseSepolia } from "viem/chains";
 
 const xlayerTestnet: Chain = {
   id: 1952,
@@ -17,44 +16,28 @@ const xlayerTestnet: Chain = {
   testnet: true,
 };
 
-const rawChainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532";
-const chainId = Number(rawChainId);
-if (Number.isNaN(chainId)) {
-  throw new Error(
-    `[contracts] NEXT_PUBLIC_CHAIN_ID="${rawChainId}" is not a valid number.`,
-  );
-}
+export const CHAIN = xlayerTestnet;
 
-function resolveChain(): Chain {
-  if (chainId === 1952) return xlayerTestnet;
-  if (chainId === 8453) return base;
-  return baseSepolia;
-}
+// Static access required — Webpack only inlines process.env.NEXT_PUBLIC_*
+// when the key is a string literal, not a dynamic variable.
+const ADDRESS_ENV = {
+  NEXT_PUBLIC_ADDRESS_BOOK_ADDRESS:    process.env.NEXT_PUBLIC_ADDRESS_BOOK_ADDRESS,
+  NEXT_PUBLIC_CONTROLLER_ADDRESS:     process.env.NEXT_PUBLIC_CONTROLLER_ADDRESS,
+  NEXT_PUBLIC_MARGIN_POOL_ADDRESS:    process.env.NEXT_PUBLIC_MARGIN_POOL_ADDRESS,
+  NEXT_PUBLIC_OTOKEN_FACTORY_ADDRESS: process.env.NEXT_PUBLIC_OTOKEN_FACTORY_ADDRESS,
+  NEXT_PUBLIC_ORACLE_ADDRESS:         process.env.NEXT_PUBLIC_ORACLE_ADDRESS,
+  NEXT_PUBLIC_WHITELIST_ADDRESS:      process.env.NEXT_PUBLIC_WHITELIST_ADDRESS,
+  NEXT_PUBLIC_BATCH_SETTLER_ADDRESS:  process.env.NEXT_PUBLIC_BATCH_SETTLER_ADDRESS,
+  NEXT_PUBLIC_USDC_ADDRESS:           process.env.NEXT_PUBLIC_USDC_ADDRESS,
+  NEXT_PUBLIC_WETH_ADDRESS:           process.env.NEXT_PUBLIC_WETH_ADDRESS,
+  NEXT_PUBLIC_WBTC_ADDRESS:           process.env.NEXT_PUBLIC_WBTC_ADDRESS,
+} as const;
 
-export const CHAIN = resolveChain();
-export const IS_XLAYER = chainId === 1952;
+const REQUIRED_KEYS = Object.keys(ADDRESS_ENV) as (keyof typeof ADDRESS_ENV)[];
+const isAddr = (v: string | undefined): v is string =>
+  !!v && /^0x[0-9a-fA-F]{40}$/.test(v);
 
-const REQUIRED_ADDRESSES = [
-  "NEXT_PUBLIC_ADDRESS_BOOK_ADDRESS",
-  "NEXT_PUBLIC_CONTROLLER_ADDRESS",
-  "NEXT_PUBLIC_MARGIN_POOL_ADDRESS",
-  "NEXT_PUBLIC_OTOKEN_FACTORY_ADDRESS",
-  "NEXT_PUBLIC_ORACLE_ADDRESS",
-  "NEXT_PUBLIC_WHITELIST_ADDRESS",
-  "NEXT_PUBLIC_BATCH_SETTLER_ADDRESS",
-  "NEXT_PUBLIC_USDC_ADDRESS",
-  "NEXT_PUBLIC_WETH_ADDRESS",
-  "NEXT_PUBLIC_WBTC_ADDRESS",
-] as const;
-
-const ADDRESS_ENV: Record<string, string | undefined> = {};
-for (const k of REQUIRED_ADDRESSES) {
-  ADDRESS_ENV[k] = process.env[k];
-}
-
-const missing = REQUIRED_ADDRESSES.filter(
-  (k) => !ADDRESS_ENV[k] || !/^0x[0-9a-fA-F]{40}$/.test(ADDRESS_ENV[k]!),
-);
+const missing = REQUIRED_KEYS.filter((k) => !isAddr(ADDRESS_ENV[k]));
 
 if (missing.length > 0) {
   throw new Error(

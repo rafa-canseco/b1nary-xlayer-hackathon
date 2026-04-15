@@ -3,7 +3,6 @@
 Usage: uv run python -m src.main
 """
 
-import json
 import logging
 import threading
 import time
@@ -12,20 +11,15 @@ from dataclasses import dataclass
 from eth_account import Account
 from web3 import Web3
 
-from solders.pubkey import Pubkey  # type: ignore[import-untyped]
-
 from src import api_client, config, fill_listener, hedge_executor, trade_logger
 from src.capacity import calculate_capacity_internal
 from src.position_tracker import PositionTracker
 from src.pricer import check_iv_divergence, validate_iv
-from src.quote_builder import build_quotes, to_api_payload, to_solana_api_payload
+from src.quote_builder import build_quotes, to_api_payload
 from src.signer import (
     build_domain,
-    build_solana_quote_message,
     read_maker_nonce,
-    read_maker_nonce_solana,
     sign_quote,
-    sign_quote_solana,
 )
 
 from src.startup_recovery import recover_positions
@@ -38,10 +32,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("mm")
-
-# Solana runtime state (populated in main() if configured)
-_solana_keypair = None  # solders.Keypair | None
-_solana_maker_pubkey: str = ""  # base58 pubkey string
 
 # Per-EVM-chain runtime state: {chain_name: (Web3, domain_dict)}
 _evm_chains: dict[str, tuple[Web3, dict]] = {}
@@ -62,18 +52,14 @@ _fill_lock = threading.Lock()
 SPOT_HISTORY_MAX = 100
 
 
-def _get_market(asset: str, chain: str = "base") -> MarketSnapshot:
+def _get_market(asset: str, chain: str = "xlayer") -> MarketSnapshot:
     key = f"{chain}/{asset}"
     if key not in _market:
         _market[key] = MarketSnapshot()
     return _market[key]
 
 
-def run_cycle(
-    w3: Web3,
-    domain: dict,
-    mm_address: str,
-) -> None:
+def run_cycle(mm_address: str) -> None:
     """Single quote-refresh cycle across all chains and assets."""
     # 1. Delete stale quotes from previous cycle (per-chain)
     for chain_cfg in config.CHAINS:
@@ -153,8 +139,8 @@ def _compute_utilization(cap) -> float:
     return 0.0
 
 
-def _sign_quotes_base(quotes: list[dict], domain: dict) -> list[dict]:
-    """Sign Base quotes with EIP-712 ECDSA and convert to API payloads."""
+def _sign_quotes_evm(quotes: list[dict], domain: dict) -> list[dict]:
+    """Sign EVM quotes with EIP-712 ECDSA and convert to API payloads."""
     payloads = []
     for q in quotes:
         eip712_data = {
@@ -170,34 +156,12 @@ def _sign_quotes_base(quotes: list[dict], domain: dict) -> list[dict]:
     return payloads
 
 
-def _sign_quotes_solana(quotes: list[dict]) -> list[dict]:
-    """Sign Solana quotes with ed25519 and convert to API payloads."""
-    if _solana_keypair is None:
-        raise RuntimeError(
-            "Solana keypair not initialized — call _init_solana() before signing"
-        )
-    payloads = []
-    for q in quotes:
-        otoken_bytes = bytes(Pubkey.from_string(q["oToken"]))
-        message = build_solana_quote_message(
-            otoken_mint=otoken_bytes,
-            bid_price=q["bidPrice"],
-            deadline=q["deadline"],
-            quote_id=q["quoteId"],
-            max_amount=q["maxAmount"],
-            maker_nonce=q["makerNonce"],
-        )
-        sig = sign_quote_solana(_solana_keypair, message)
-        payloads.append(to_solana_api_payload(q, sig, _solana_maker_pubkey))
-    return payloads
-
-
 def _run_asset_cycle(
     w3: Web3 | None,
     domain: dict | None,
     mm_address: str,
     asset_cfg: config.AssetConfig,
-    chain: str = "base",
+    chain: str = "xlayer",
 ) -> None:
     """Quote-refresh for a single asset on a given chain."""
     asset_name = asset_cfg.name
@@ -257,16 +221,14 @@ def _quote_and_submit(
     asset_cfg,
     chain,
 ) -> None:
-    """Build quotes, sign per-chain, and submit to backend."""
+    """Build quotes, sign, and submit to backend."""
     asset_name = asset_cfg.name
     chain_label = f"{chain}/{asset_name}".upper()
 
-    # Capacity — calculate for all chains
-    solana_addr = _solana_maker_pubkey if chain == "solana" else None
     cap = _calculate_and_report_capacity(
         w3,
         _get_market(asset_name, chain),
-        solana_addr or mm_address,
+        mm_address,
         asset_cfg,
         chain,
     )
@@ -274,17 +236,8 @@ def _quote_and_submit(
         return
     max_amount_raw = min(int(cap.capacity_eth * 10**OTOKEN_DECIMALS), config.MAX_AMOUNT)
 
-    # Read nonce per chain
-    if chain == "solana":
-        nonce = read_maker_nonce_solana(
-            config.SOLANA_RPC_URL,
-            config.SOLANA_BATCH_SETTLER,
-            _solana_maker_pubkey,
-        )
-    else:
-        evm_cfg = config.EVM_CONFIGS.get(chain)
-        settler_addr = evm_cfg.batch_settler if evm_cfg else config.BATCH_SETTLER
-        nonce = read_maker_nonce(w3, settler_addr, mm_address)
+    evm_cfg = config.EVM_CONFIGS[chain]
+    nonce = read_maker_nonce(w3, evm_cfg.batch_settler, mm_address)
 
     quotes = build_quotes(
         market,
@@ -299,10 +252,7 @@ def _quote_and_submit(
         log.warning("No valid quotes for %s", chain_label)
         return
 
-    if chain == "solana":
-        payloads = _sign_quotes_solana(quotes)
-    else:
-        payloads = _sign_quotes_base(quotes, domain)
+    payloads = _sign_quotes_evm(quotes, domain)
 
     result = api_client.submit_quotes(payloads)
     log.info(
@@ -315,7 +265,7 @@ def _quote_and_submit(
     )
 
 
-def _calculate_and_report_capacity(w3, mkt, mm_address, asset_cfg, chain="base"):
+def _calculate_and_report_capacity(w3, mkt, mm_address, asset_cfg, chain="xlayer"):
     """Calculate capacity, report to backend. Returns cap or None."""
     try:
         cap = calculate_capacity_internal(
@@ -513,32 +463,12 @@ def _pick_refresh_interval() -> int:
     return config.REFRESH_INTERVAL
 
 
-def _init_solana() -> None:
-    """Load Solana keypair from SOLANA_PRIVATE_KEY env var."""
-    global _solana_keypair, _solana_maker_pubkey  # noqa: PLW0603
-    from solders.keypair import Keypair  # type: ignore[import-untyped]
-
-    raw = config.SOLANA_PRIVATE_KEY
-    # Support both JSON byte-array and base58 secret key formats
-    if raw.strip().startswith("["):
-        key_bytes = bytes(json.loads(raw))
-        _solana_keypair = Keypair.from_bytes(key_bytes)
-    else:
-        _solana_keypair = Keypair.from_base58_string(raw)
-    _solana_maker_pubkey = str(_solana_keypair.pubkey())
-
-
 def main() -> None:
     global _evm_chains  # noqa: PLW0603
     mm_address = Account.from_key(config.MM_PRIVATE_KEY).address
-    w3 = Web3(Web3.HTTPProvider(config.RPC_URL))
-    domain = build_domain(config.CHAIN_ID, config.BATCH_SETTLER)
 
-    # Init all EVM chains (Base + XLayer etc.)
-    _evm_chains["base"] = (w3, domain)
+    # Init EVM chains
     for name, evm_cfg in config.EVM_CONFIGS.items():
-        if name == "base":
-            continue
         try:
             chain_w3 = Web3(Web3.HTTPProvider(evm_cfg.rpc_url))
             chain_domain = build_domain(evm_cfg.chain_id, evm_cfg.batch_settler)
@@ -552,19 +482,6 @@ def main() -> None:
             )
             config.CHAINS = [c for c in config.CHAINS if c.name != name]
 
-    # Init Solana if configured — failure disables Solana, Base continues
-    if config.SOLANA_PRIVATE_KEY:
-        try:
-            _init_solana()
-        except Exception:
-            log.error(
-                "Failed to init Solana keypair. Expected "
-                "SOLANA_PRIVATE_KEY as base58 string or JSON "
-                "byte array [1,2,...,64]. Solana disabled.",
-                exc_info=True,
-            )
-            config.CHAINS = [c for c in config.CHAINS if c.name != "solana"]
-
     log.info("b1nary Market Maker starting")
     log.info("  MM address:  %s", mm_address)
     log.info("  Backend:     %s", config.BACKEND_URL)
@@ -577,15 +494,11 @@ def main() -> None:
             evm_cfg.chain_id,
             evm_cfg.batch_settler[:10] + "...",
         )
-        chain_assets = {
-            "base": config.ASSETS,
-            "xlayer": config.XLAYER_ASSETS,
-        }.get(name, [])
-        log.info("  %s assets: %s", name.upper(), [a.name for a in chain_assets])
-    if config.SOLANA_PRIVATE_KEY:
-        log.info("  Solana MM:   %s", _solana_maker_pubkey)
-        log.info("  Solana RPC:  %s", config.SOLANA_RPC_URL)
-        log.info("  Solana assets: %s", [a.name for a in config.SOLANA_ASSETS])
+        log.info(
+            "  %s assets: %s",
+            name.upper(),
+            [a.name for a in config.XLAYER_ASSETS],
+        )
     log.info("  Spread:      %d bps", config.SPREAD_BPS)
     log.info(
         "  Refresh:     %ds (fast=%ds when <%dh to expiry)",
@@ -635,7 +548,7 @@ def main() -> None:
         cycle += 1
         log.info("--- Cycle %d ---", cycle)
         try:
-            run_cycle(w3, domain, mm_address)
+            run_cycle(mm_address)
         except Exception:
             log.error("Cycle %d failed", cycle, exc_info=True)
 

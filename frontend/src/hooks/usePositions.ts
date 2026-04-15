@@ -6,7 +6,6 @@ import { api, type Position } from "@/lib/api";
 export function usePositions(
   address: string | undefined,
   fundingAddress: string | undefined,
-  solanaAddress?: string | undefined,
   pollInterval = 15_000,
 ) {
   const [positions, setPositions] = useState<Position[]>([]);
@@ -20,14 +19,10 @@ export function usePositions(
       return;
     }
     try {
-      // Fetch from both addresses, deduplicate by id
       const queries: Promise<Position[]>[] = [];
       if (address) queries.push(api.getPositions(address));
       if (fundingAddress && fundingAddress !== address) {
         queries.push(api.getPositions(fundingAddress));
-      }
-      if (solanaAddress) {
-        queries.push(api.getPositions(solanaAddress));
       }
 
       const results = await Promise.all(queries);
@@ -47,13 +42,12 @@ export function usePositions(
     } finally {
       setLoading(false);
     }
-  }, [address, fundingAddress, solanaAddress]);
+  }, [address, fundingAddress]);
 
   useEffect(() => {
     refresh();
     if (!address && !fundingAddress) return;
 
-    // Poll faster for the first 30s after mount (new position may still be indexing)
     const fastPoll = setInterval(refresh, 3_000);
     const stopFastPoll = setTimeout(() => clearInterval(fastPoll), 30_000);
     const slowPoll = setInterval(refresh, pollInterval);

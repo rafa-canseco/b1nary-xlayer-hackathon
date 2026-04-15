@@ -93,16 +93,10 @@ onchainos wallet contract-call --chain xlayer --to <contract> --input-data <hex_
 
 ## API Endpoints
 
-Set API base URL to the hackathon backend deployment. For local demos use:
+Set API base URL to the hackathon backend deployment:
 
 ```text
-http://localhost:8000
-```
-
-Expected deployed URL:
-
-```text
-https://<xlayer-backend-service>.up.railway.app
+https://backend-production-afe9.up.railway.app
 ```
 
 Public endpoints:

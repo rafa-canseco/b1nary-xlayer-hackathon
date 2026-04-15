@@ -24,12 +24,10 @@ function assetLabel(slug: string): string {
 function toUsd(
   amount: number,
   asset: string,
-  ethSpot: number | undefined,
-  btcSpot: number | undefined,
+  okbSpot: number | undefined,
 ): number {
   if (asset === "usdc") return amount;
-  if (asset === "eth") return amount * (ethSpot ?? 0);
-  if (asset === "btc") return amount * (btcSpot ?? 0);
+  return amount * (okbSpot ?? 0);
   return 0;
 }
 
@@ -48,11 +46,10 @@ function fmtDate(iso: string): string {
 
 interface Props {
   history: YieldDistribution[];
-  ethSpot: number | undefined;
-  btcSpot: number | undefined;
+  okbSpot: number | undefined;
 }
 
-export function DistributionHistory({ history, ethSpot, btcSpot }: Props) {
+export function DistributionHistory({ history, okbSpot }: Props) {
   const [filter, setFilter] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -115,7 +112,7 @@ export function DistributionHistory({ history, ethSpot, btcSpot }: Props) {
               </thead>
               <tbody>
                 {visible.map((d) => {
-                  const usd = toUsd(d.amount, d.asset, ethSpot, btcSpot);
+                  const usd = toUsd(d.amount, d.asset, okbSpot);
                   return (
                     <tr
                       key={d.id}

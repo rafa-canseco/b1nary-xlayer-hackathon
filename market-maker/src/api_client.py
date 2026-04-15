@@ -27,12 +27,12 @@ def ws_url(path: str, **params: str) -> str:
 
 
 def get_market_data(
-    asset: str = "eth",
-    chain: str = "base",
+    asset: str = "okb",
+    chain: str = "xlayer",
 ) -> dict[str, Any]:
     """GET /mm/market — spot, IV, available oTokens, protocol fee."""
     params: dict[str, str] = {"asset": asset}
-    if chain != "base":
+    if chain != "xlayer":
         params["chain"] = chain
     resp = _SESSION.get(_url("/mm/market"), params=params, timeout=_TIMEOUT)
     resp.raise_for_status()

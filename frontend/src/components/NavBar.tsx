@@ -7,7 +7,6 @@ import { useBalances } from "@/hooks/useBalances";
 import { ConnectButton } from "./ConnectButton";
 import { FaucetButton } from "./FaucetButton";
 import { DEFAULT_ASSET } from "@/lib/assets";
-import { IS_XLAYER } from "@/lib/contracts";
 
 const LINKS = [
   { href: "/earn", label: "Earn" },
@@ -19,13 +18,12 @@ const SHOW_FAUCET = process.env.NEXT_PUBLIC_SHOW_FAUCET === "true";
 
 export function NavBar() {
   const pathname = usePathname();
-  const { address, fundingAddress, solanaAddress, isConnected } = useWallet();
+  const { address, fundingAddress, isConnected } = useWallet();
 
   const { usd, eth, weth, wbtc, okb, usdFormatted, loading: balLoading, refetch } = useBalances(address);
 
   const isStaging = typeof window !== "undefined" && window.location.hostname.startsWith("staging");
 
-  // Extract current asset from /earn/[asset] path
   const earnMatch = pathname.match(/^\/earn\/(\w+)/);
   const currentAsset = earnMatch?.[1] ?? DEFAULT_ASSET;
 
@@ -80,16 +78,10 @@ export function NavBar() {
                   )}
                 </>
               )}
-              {currentAsset === "btc" && wbtc > 0 && (
-                <>
-                  <span className="opacity-40">·</span>
-                  <span>{wbtc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} cbBTC</span>
-                </>
-              )}
             </div>
           )}
-          {SHOW_FAUCET && isConnected && !balLoading && (fundingAddress || solanaAddress) && (
-            <FaucetButton address={fundingAddress} solanaAddress={solanaAddress} refetch={refetch} />
+          {SHOW_FAUCET && isConnected && !balLoading && fundingAddress && (
+            <FaucetButton address={fundingAddress} refetch={refetch} />
           )}
           <ConnectButton />
         </div>
